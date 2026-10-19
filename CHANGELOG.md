@@ -1,5 +1,10 @@
 # BiSMemories
 
+## 0.8.1
+
+- **BiS addons can talk to other players on Forever again.** The game wrongly says addon messages are restricted, and the shared BiS code believed it, so nothing this addon sends to other players went out. It does now - and your guild's BiS Guild map shows where you are (outside instances; `/biscomm share off` turns that off).
+- **Names with surnames work.** The shared code now uses your whole "Name Surname": you no longer show up twice on your own guild map, and party members with surnames are recognised.
+
 ## 0.8.0
 
 - **BiSMemoriesAPI** - other BiS addons can read your album and ask for a memory to be taken (a screenshot and a note). Your switches still decide: a kind you've turned off stays off, and the gap between screenshots still applies.
