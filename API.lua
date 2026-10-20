@@ -22,7 +22,18 @@
 --     with   = { "Name Surname", ... },               -- who was in the group
 --     file   = "WoWScrnShot_101626_204431",           -- the screenshot's file stem (once taken)
 --     shot   = true | false | nil,                    -- the client said the picture saved / failed
---     from   = "BiSGuild" | nil }                     -- the addon that asked, for API memories
+--     from   = "BiSGuild" | nil,                      -- the addon that asked, for API memories
+--     -- since version 2 (0.9.0), each when known:
+--     char   = "Kumlust-Dreamscythe",                 -- whose memory it is (name-realm)
+--     class  = "SHAMAN", race = "Tauren",             -- UnitClass / UnitRace tokens
+--     map = 1413, x = 0.51, y = 0.30,                 -- the client's map and the spot on it (none inside an instance)
+--     gear   = { [16] = 17182, ... },                 -- the item id in each slot a model shows
+--     npc    = 11502,                                 -- the creature it was about (a boss, a killer)
+--     killer = "Neg Crotic", secs = 250 }             -- a death's killer; a boss fight's length
+--
+-- KINDS since version 2: "first" (a mount, riding), "gamba" (your biggest BiS Gamba win), "group"
+-- (a group photo) - beside levelup, boss, loot, achievement, death, duel, zone, exalted, candid.
+-- A "boss" is now the first kill and the fastest yet; a "death" only one worth keeping (Memories.lua).
 --
 -- FUNCTIONS (all since version 1)
 --   BiSMemoriesAPI.Ready()
@@ -55,7 +66,7 @@
 --------------------------------------------------------------------------------
 local _, ns = ...
 
-local API = { major = 1, version = 1 }
+local API = { major = 1, version = 2 }
 BiSMemoriesAPI = API
 
 local EVENTS = { BiSMemories_Taken = true }

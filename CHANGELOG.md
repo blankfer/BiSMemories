@@ -1,5 +1,26 @@
 # BiSMemories
 
+## 0.9.0
+
+**A new journal, a map of where, and fewer pictures you didn't want.**
+
+- **The journal is new:** your memories on the left, night by night; click one and the right side holds it whole - where, who was with you, how long the fight took, the picture's file name to copy - over a **postcard: you in 3D, in what you were wearing that moment and striking its pose, beside the boss you killed or whoever killed you.** Pages for **the map** and **this year**, and a button for this character's memories or every character's.
+- **A map of where every picture was taken:** Azeroth in the journal with a dot for each memory, and **pins on the game's world map** (`/bism pins mine`, `all` or `off`). Hover one for what it was, click it to open it.
+- **On this day:** once a day at login, what happened on this day a year ago - or, this first year, a month ago. A line in chat and a card on screen; click the card to open it.
+- **The year so far:** levels and how long each took, first kills, new places, firsts. `/bism year` (`/bism year all` for every character), and the journal's "this year" page.
+- **Group photo:** `/bism group` counts down on everyone's screen in your group who has a BiS addon, and everyone takes their picture at the same second.
+- **Clean pictures:** the interface hides for the instant of the shot, like Alt+Z, and comes straight back. `/bism clean` turns it off.
+- **A minimap button** (the spyglass) and **an options window** for every setting - `/bism options`, or right-click the button.
+- **Bosses: the first kill, and your fastest.** Every kill every week filled the album with the same boss. A boss is a memory the first time this character kills it, and again when a kill is your fastest yet. `/bism every boss` brings every kill back.
+- **Deaths worth keeping:** killed by a player or one of your BiS Tools rivals, dying in a boss fight, and your first death ever. In a battleground or arena only a rival's kill counts. `/bism every death` keeps them all.
+- **The album, made easy:** open the album page (the journal's box at the bottom holds its whole path: click, Ctrl+C, Windows key + R, Ctrl+V, Enter), press **Choose your WoW folder** once, and it finds your pictures and the notes by itself. After that it opens straight to your album every time, and **Make a desktop icon** puts it a double-click away. The page shows your game folder with a Copy button, and a bar while it works.
+- **Who was there:** each picture keeps your group by their whole names. Click a name on the postcard to whisper them, invite them, or add them as a friend or a BiS Tools pal.
+- **Your older pictures sort themselves out:** pictures from before this version are given to the character who took them (worked out from the levels), boss kills get their boss once you target that boss again, and the map places them by their zone.
+- **Firsts:** your first mount, a new mount, learning to ride. **Gamba:** your biggest win yet at a BiS Gamba table.
+- **Each character their own:** every memory says who took it, and each character has their own list of places - an alt now gets their own first time in the Barrens even if your main was there first.
+- **Fixed:** a ding could be written down as the level before; going exalted could be missed when the game said it as a system line.
+- `/bism db` says which saved copy came back at login.
+
 ## 0.8.1
 
 - **BiS addons can talk to other players on Forever again.** The game wrongly says addon messages are restricted, and the shared BiS code believed it, so nothing this addon sends to other players went out. It does now - and your guild's BiS Guild map shows where you are (outside instances; `/biscomm share off` turns that off).

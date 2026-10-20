@@ -9,7 +9,36 @@ local FILES = H.TOC(ROOT, "BiSMemories.toc")
 local ALLOWED = {
     BiSMemoriesDB = true, BiSMemoriesAPI = true, SLASH_BISMEMORIES1 = true, SLASH_BISMEMORIES2 = true,
     HARNESS = true, print = true, BiSTheme = true, LibBiSComm = true, SLASH_BISCOMM1 = true,
+    -- 0.9.0: the journal and the options window are named (Escape closes them), the minimap button too
+    BiSMemoriesJournal = true, BiSMemoriesOptions = true, BiSMinimapBiSMemories = true,
+    -- the third-party map libs (Libs/THIRD-PARTY.txt): LibStub's one global, the pins' show flags
+    LibStub = true, HBD_PINS_WORLDMAP_SHOW_PARENT = true, HBD_PINS_WORLDMAP_SHOW_CONTINENT = true,
+    HBD_PINS_WORLDMAP_SHOW_WORLD = true,
 }
+-- HEREBEDRAGONS DRIVES THE CLIENT'S OWN MAP ENGINE, which a headless mock cannot stand in for honestly
+-- (BiS Tools' and BiS Guild's suites found the same). Its two files must COMPILE, and in their place a
+-- stand-in registers under the same LibStub name, raises the real one's argument errors, refuses one
+-- frame on two maps, and records every pin. (BiS Guild's dev/tests.lua, the same stand-in.)
+local PINS = { world = {}, minimap = {} }
+local function fakeHBDPins()
+    local P = LibStub:NewLibrary("HereBeDragons-Pins-2.0", 999)
+    local function check(ref, icon, map, x, y, what)
+        if not ref then error("HereBeDragons-Pins-2.0: " .. what .. ": 'ref' must not be nil", 3) end
+        if type(icon) ~= "table" or not icon.SetPoint then error("HereBeDragons-Pins-2.0: " .. what .. ": 'icon' must be a frame", 3) end
+        if type(map) ~= "number" or type(x) ~= "number" or type(y) ~= "number" then
+            error("HereBeDragons-Pins-2.0: " .. what .. ": 'uiMapID', 'x' and 'y' must be numbers", 3)
+        end
+    end
+    function P:AddWorldMapIconMap(ref, icon, map, x, y, flag)
+        check(ref, icon, map, x, y, "AddWorldMapIconMap")
+        if PINS.minimap[icon] then error("this frame is already a pin on the other map", 2) end
+        if flag ~= nil and type(flag) ~= "number" then error("showFlag must be a number (or nil)", 2) end
+        PINS.world[icon] = { map = map, x = x, y = y, flag = flag }
+    end
+    function P:RemoveWorldMapIcon(ref, icon) PINS.world[icon] = nil end
+    function P:RemoveAllWorldMapIcons() PINS.world = {} end
+    _G.HBD_PINS_WORLDMAP_SHOW_PARENT, _G.HBD_PINS_WORLDMAP_SHOW_CONTINENT, _G.HBD_PINS_WORLDMAP_SHOW_WORLD = 1, 2, 3
+end
 local function Load()
     local before = {}
     for k in pairs(_G) do before[k] = true end
@@ -17,7 +46,13 @@ local function Load()
     for _, rel in ipairs(FILES) do
         local chunk, err = loadfile(ROOT .. "/" .. rel)
         if not chunk then error("load " .. rel .. ": " .. tostring(err), 0) end
-        chunk("BiSMemories", NS)
+        if rel:find("HereBeDragons-2.0.lua", 1, true) then
+            -- compiled; the engine is the client's
+        elseif rel:find("HereBeDragons-Pins-2.0.lua", 1, true) then
+            fakeHBDPins()
+        else
+            chunk("BiSMemories", NS)
+        end
     end
     H.leaked = {}
     for k in pairs(_G) do
@@ -52,7 +87,7 @@ H.eq(NS.VERSION, TOC_VERSION, "version is the TOC's")
 -- THE API BEFORE LOGIN: the files are loaded, the saved notes are not. Every call answers, none throws.
 do
   local A = _G.BiSMemoriesAPI
-  H.ok(type(A) == "table" and A.major == 1 and A.version == 1, "BiSMemoriesAPI is there, major 1, version 1")
+  H.ok(type(A) == "table" and A.major == 1 and A.version == 2, "BiSMemoriesAPI is there, major 1, version 2")
   for _, call in ipairs({
     { "Ready", {} }, { "Memories", {} }, { "Latest", {} }, { "Kinds", {} }, { "TakeMemory", { "too early" } },
   }) do
@@ -473,7 +508,7 @@ _G.SlashCmdList.BISMEMORIES("")
 H.ok(table.concat(said, " "):find("nothing yet", 1, true), "and says so plainly")
 
 H.section("zones, duels and exalted")
-_G.BiSMemoriesDB.zones = nil
+M.Char().zones = {}
 M.zoneShots = 0
 H.ok(M.NewZone("Elwynn Forest") == nil, "the first zone it ever sees is remembered, not shot")
 H.ok(M.NewZone("Westfall") == "Westfall", "the next new one is a memory")
@@ -487,7 +522,7 @@ H.ok(M.NewZone("Westfall") == nil, "and only the first time")
 -- unknown, ready to be "new" the next time it did speak up.
 do
   local realGet = _G.GetRealZoneText
-  _G.BiSMemoriesDB.zones = nil
+  M.Char().zones = {}
   M.zoneShots = 0
   M.SeeZone("Mulgore")                                  -- so nothing below is the free first one
 
@@ -495,19 +530,19 @@ do
   -- that calls OnEvent by hand passes just as happily when the name is missing from the list.
   _G.GetRealZoneText = function() return "The Barrens" end
   fire("ZONE_CHANGED")
-  H.ok(_G.BiSMemoriesDB.zones["The Barrens"] == true, "a quiet zone change is still written down")
+  H.ok(M.Char().zones["The Barrens"] == true, "a quiet zone change is still written down")
   H.ok(M.NewZone("The Barrens") == nil, "so walking back in later is not worth a picture")
 
   _G.GetRealZoneText = function() return "Ashenvale" end
   fire("ZONE_CHANGED_INDOORS")
-  H.ok(_G.BiSMemoriesDB.zones["Ashenvale"] == true, "and so is stepping indoors")
+  H.ok(M.Char().zones["Ashenvale"] == true, "and so is stepping indoors")
 
   -- a picture taken anywhere is proof you were there, whatever the reason was
   _G.GetRealZoneText = function() return "Durotar" end
   local dz = NS.DB()
   dz.levelup, dz.gap = true, 0
   M.OnEvent("PLAYER_LEVEL_UP", 12)
-  H.ok(_G.BiSMemoriesDB.zones["Durotar"] == true,
+  H.ok(M.Char().zones["Durotar"] == true,
        "a photograph of a place is proof enough that you have been there")
 
   -- AND A CEILING ON THE CAMERA, whatever the client does: three new places in one session is a
@@ -519,7 +554,7 @@ do
     if M.NewZone("Place " .. i) then shot = shot + 1 end
   end
   H.eq(shot, 3, "at most three new-place pictures in one session")
-  H.ok(_G.BiSMemoriesDB.zones["Place 8"] == true,
+  H.ok(M.Char().zones["Place 8"] == true,
        "but all eight are written down, so none of them is new tomorrow")
   M.zoneShots = 0
 end
@@ -639,10 +674,18 @@ do
   _G.BiSMemoriesDB = { log = { { at = 1, file = "WoWScrnShot_1", reason = "zone", detail = "Mulgore" } } }
   _G.BiSMemoriesCharDB = nil
   fire("PLAYER_LOGOUT")
-  H.ok(type(_G.BiSMemoriesCharDB) == "table" and _G.BiSMemoriesCharDB.log[1].detail == "Mulgore",
-       "logging out writes the per-character copy")
-  H.ok(not rawequal(_G.BiSMemoriesCharDB, _G.BiSMemoriesDB),
-       "and it is a SEPARATE table - an alias would be one file saved and one lost")
+  local back = NS.Deserialize(_G.BiSMemoriesCharDB)
+  H.ok(type(_G.BiSMemoriesCharDB) == "string" and back and back.log[1].detail == "Mulgore",
+       "logging out writes the per-character copy - as one line of text, read back whole")
+  H.ok(not _G.BiSMemoriesCharDB:find("[\n\r]"), "and never a newline in it: the album page loads it as a script")
+  -- the page's reader on it: a note it can find, the same keys as the account file
+  H.ok(_G.BiSMemoriesCharDB:find('["file"]="WoWScrnShot_1"', 1, true), "with the notes as the page reads them")
+  -- the awkward strings survive the trip: quotes, backslashes, a newline in a note
+  local odd = { log = { { detail = 'He said "hi"\nC:\\WoW', at = 7, n = 0.5, yes = true } } }
+  local again = NS.Deserialize(NS.Serialize(odd))
+  H.ok(again and again.log[1].detail == odd.log[1].detail and again.log[1].n == 0.5 and again.log[1].yes == true,
+       "quotes, backslashes and newlines go there and back")
+  H.eq(NS.Deserialize('os.exit()'), nil, "and the copy is read as data, never run as code")
 
   local kept = _G.BiSMemoriesCharDB
   _G.BiSMemoriesDB = nil                      -- the client loses the account-wide one
@@ -692,11 +735,11 @@ do
   -- window people see most often is this one, and it has to say why rather than look broken.
   J.Show()
   H.ok(J.frame:IsShown(), "it opens")
-  H.ok(strip(J.frame.foot._text):find("nothing yet"), "and an empty log says so in words")
+  H.ok(strip(J.frame.kind._text):find("nothing yet"), "and an empty log says so in words")
   H.eq(J.frame.rows[1]._text, "", "with no stale row left behind")
 
-  -- twenty memories, newest first
-  for i = 1, 20 do
+  -- forty memories, newest first (more than the 0.9.0 window's rows)
+  for i = 1, 40 do
     table.insert(log, 1, { at = 1000 + i, reason = "zone", detail = "place " .. i,
                            zone = "Mulgore", with = {}, file = "WoWScrnShot_" .. i })
   end
@@ -705,16 +748,16 @@ do
   -- a second apart, so they are all one "night" - which is the rule doing exactly what it says.
   H.ok(strip(J.frame.rows[1]._text):find("Mulgore"), "the night's heading is at the top",
        strip(J.frame.rows[1]._text))
-  H.ok(strip(J.frame.rows[2]._text):find("place 20"), "the newest memory is under it")
-  H.ok(strip(J.frame.rows[3]._text):find("place 19"), "and the one before it under that")
-  H.ok(strip(J.frame.foot._text):find("of 20"), "the footer counts the memories, not the lines")
+  H.ok(strip(J.frame.rows[2]._text):find("place 40"), "the newest memory is under it")
+  H.ok(strip(J.frame.rows[3]._text):find("place 39"), "and the one before it under that")
+  H.ok(strip(J.frame.count._text):find("40 kept"), "the footer counts the memories, not the lines")
 
   -- the wheel walks it, and stops at the ends rather than running off
   H.eq(J.Scroll(3), 3, "the wheel moves down the list")
-  H.ok(strip(J.frame.rows[1]._text):find("place 18"), "and the page follows",
+  H.ok(strip(J.frame.rows[1]._text):find("place 38"), "and the page follows",
        strip(J.frame.rows[1]._text))
   H.eq(J.Scroll(-99), 0, "it will not go above the newest")
-  H.eq(J.Scroll(99), 9, "nor past the oldest - 20 memories plus a heading, 12 rows")
+  H.eq(J.Scroll(99), 41 - J.ROWS, "nor past the oldest - 40 memories plus a heading, a page of rows")
 
   -- A MEMORY LANDING WHILE IT IS OPEN pulls it forward. Through M.Shoot, the path the game
   -- actually takes - calling J.Touch() by hand here proved only that Touch works, and passed
@@ -744,9 +787,38 @@ do
        "and reads the notes by walking braces, not by splitting on a comma")
   H.ok(page and page:find("function sessions(", 1, true) ~= nil,
        "and groups by raid night, not by calendar day - a night that ends after midnight is one night")
+  -- 0.9.0: the kinds in plain words, whose memories, the year so far
+  H.ok(page and page:find("var WORDS", 1, true) and page:find('levelup: "Level up"', 1, true),
+       "the album says the kinds in plain words, the same as the journal")
+  H.ok(page and page:find("function people(", 1, true) and page:find('char: get(block, "char")', 1, true),
+       "and can show one character's memories, from the notes' own names")
+  H.ok(page and page:find("function year(", 1, true), "and adds up the year so far")
   H.ok(page and page:find("http", 1, true) == nil or not page:find("src=\"http", 1, true),
        "nothing is fetched from the internet: it must work offline")
   H.ok(bytes(HERE .. "/../Album/README.txt") ~= nil, "with the instructions beside it")
+  -- ONE STEP (Arn, 21 Oct 2026: "make it easy like the google notebook thing"): hand it the WoW folder and it
+  -- finds both halves; it walks only where they can be (never Data or Interface); the X closes (the side
+  -- strips used to cover it). The logic itself was run in a browser on the day it was written.
+  H.ok(page and page:find("function kindOf(", 1, true) and page:find("function worthWalking(", 1, true)
+       and page:find("function take(", 1, true), "one step: the page finds the pictures and the notes itself")
+  H.ok(page and page:find("^(Interface|Data|Cache|Logs", 1, true), "and never walks Data or Interface")
+  -- the picker leads (21 Oct 2026: a dragged folder stopped working on this page in Chrome and Edge alike)
+  H.ok(page and page:find("Choose your WoW folder", 1, true) and page:find("You do this once.", 1, true)
+       and not page:find("Add the addon's notes (optional)", 1, true), "one button, used once, and the upload box explained")
+  H.ok(page and page:find("top: 70px", 1, true) and page:find("z-index: 2", 1, true), "the lightbox's X sits above the side strips")
+  -- "i thought that it froze" / "click this button to make a icon on your desktop" (Arn, 21 Oct 2026)
+  H.ok(page and page:find("function counting(", 1, true) and page:find('id="busy"', 1, true),
+       "a bar that moves while the folder is read, with what it has found so far")
+  -- Chrome refused a dropped Program Files folder's handle ("contains system files") AND emptied the drop
+  -- (Arn's screenshot, 21 Oct): no handles; the page opens what lies beside it, by relative path
+  H.ok(page and not page:find("getAsFileSystemHandle", 1, true) and page:find("function openKept(", 1, true)
+       and page:find('"../../../../"', 1, true), "after one drag the page opens the album by itself, from beside it")
+  H.ok(page and page:find("function whereAmI(", 1, true) and page:find("where-copy", 1, true),
+       "and it says where the game folder is, with a Copy button")
+  -- a .url was held back by Chrome as possibly harmful ("BiS Memories album.download", 21 Oct): a page instead
+  H.ok(page and not page:find("[InternetShortcut]", 1, true) and page:find("function launcher(", 1, true)
+       and page:find('http-equiv="refresh"', 1, true) and page:find("Make a desktop icon", 1, true),
+       "and a desktop icon that opens the album")
 
   -- THE ACCOUNT FOLDER IS NOT ALWAYS ONE (4 Oct 2026). The page said `<ACCOUNT>` is "a number and
   -- a hash" and that there is "usually only one folder" - and both were wrong on the author's own
@@ -881,7 +953,7 @@ do
 
   -- a boss kill with a hidden name is still a memory - only the name is lost
   local ok4, entry = pcall(M.OnEvent, "BOSS_KILL", 1, secret())
-  H.ok(ok4 and entry and entry.detail == "a boss", "a boss kill with a hidden name still gets its picture",
+  H.ok(ok4 and entry and entry.detail == "first kill: a boss", "a boss kill with a hidden name still gets its picture",
        tostring(entry and entry.detail))
   H.ok(#M.Log() == before + 1, "exactly one memory from all of that")
   H.ok(leaked == 0, "and no parser was ever handed a secret", leaked)
@@ -943,12 +1015,15 @@ H.section("the window has room for what is in it")
 -- memories. Twelve rows of twenty, starting 34 down, end 274 below the top; the box and its label
 -- want about 70 from the bottom. A suite cannot see an overlap, but it can see the arithmetic.
 do
-  local f = NS.J.Build and NS.J.Build() or NS.J.frame
-  if f and f.GetHeight then
-    local rowsEnd = 34 + 12 * 20           -- where the last row's bottom lands
-    H.eq(f:GetHeight() - rowsEnd >= 66, true,
-         "the rows stop above the copy box rather than behind it")
-  end
+  local J = NS.J
+  local f = J.Build()
+  -- 0.9.0's window: the rows from J.LIST_TOP, J.ROWS of J.ROW_H, and the foot's label and box below
+  local rowsEnd = J.LIST_TOP + J.ROWS * J.ROW_H
+  H.ok(f:GetHeight() - rowsEnd >= J.FOOT - 6, "the rows stop above the copy box rather than behind it",
+       rowsEnd .. " of " .. f:GetHeight())
+  H.ok(math.abs(f:GetWidth() / f:GetHeight() - 1.43) < 0.01, "the BiS window shape, 1.43:1",
+       f:GetWidth() .. "x" .. f:GetHeight())
+  H.ok(J.DETAIL_X + J.DETAIL_W <= f:GetWidth() - 8 and J.LIST_W + 8 < J.DETAIL_X, "the list and the detail side by side, inside it")
 end
 
 H.section("where the album page is")
@@ -958,9 +1033,19 @@ H.section("where the album page is")
 do
   local J, d = NS.J, _G.BiSMemoriesDB
   d.wowPath = nil
-  H.eq(J.AlbumPath(), [[Interface\AddOns\BiSMemories\Album\BiSMemories-Album.html]],
-       "with nowhere set, the path is the part that is always true")
-  H.eq(J.AlbumPathWhole(), false, "and it says it is not the whole thing")
+  -- untold, a guess (Arn, 21 Oct 2026: "how close can we get them to the album html"): the launcher's folder,
+  -- and the version by the client - Forever's beta says IsBetaBuild() true (measured) and plays from
+  -- _classic_beta_; the live client from _forever_
+  local keepBeta = _G.IsBetaBuild
+  _G.IsBetaBuild = function() return true end
+  H.eq(J.AlbumPath(), [[C:\Program Files (x86)\World of Warcraft\_classic_beta_\Interface\AddOns\BiSMemories\Album\BiSMemories-Album.html]],
+       "with nowhere set: the beta client's folder, whole, to paste")
+  _G.IsBetaBuild = function() return false end
+  H.eq(J.AlbumPath():find([[\_forever_\Interface]], 1, true) ~= nil, true, "the live client's: _forever_")
+  _G.IsBetaBuild = nil
+  H.eq(J.AlbumPath():find([[\_forever_\Interface]], 1, true) ~= nil, true, "a client without the question: the live one")
+  _G.IsBetaBuild = keepBeta
+  H.eq(J.AlbumPathWhole(), false, "and it says it is a guess")
 
   J.SetWow([[C:\Program Files (x86)\World of Warcraft\_classic_beta_]])
   H.eq(J.AlbumPath(),
@@ -983,9 +1068,10 @@ do
   H.eq(J.AlbumPath():find([[_classic_\Interface]], 1, true) ~= nil, true,
        "a slash already in the saved file is trimmed when the path is built")
 
-  -- THE VERSION FOLDER IS NEVER GUESSED. "_classic_beta_" is today's name, not launch day's.
+  -- a told folder always beats the guess
+  d.wowPath = [[D:\Games\WoW\_forever_]]
+  H.eq(J.AlbumPath():find([[D:\Games\WoW\_forever_\Interface]], 1, true) ~= nil, true, "a told folder beats the guess")
   d.wowPath = nil
-  H.eq(J.AlbumPath():find("_classic") == nil, true, "no version folder is invented")
 
   J.SetWow(nil)
   H.eq(d.wowPath, nil, "and it can be forgotten again")
@@ -1156,7 +1242,7 @@ do
   GameTooltip.AddLine = function(_, t) tip[#tip + 1] = strip(t) end
   local row
   for i = 1, #J.frame.rows do
-    if strip(J.frame.rows[i]._text):find("  death  ", 1, true) then row = i end
+    if strip(J.frame.rows[i]._text):find("  Death  ", 1, true) then row = i end
   end
   H.ok(row ~= nil, "the death row is on the page")
   H.ok(not strip(J.frame.rows[row or 1]._text):find("with 4", 1, true), "the row no longer carries the count")
@@ -1174,5 +1260,490 @@ do
   J.Hide()
   for i = #log, 1, -1 do log[i] = nil end
 end
+
+-- ===================================================================== 0.9.0: the review
+-- Arn, 21 Oct 2026, on the review of the family's first addon: "do all that stuff it all looks good and
+-- needed". A function, not a block: the main chunk is near Lua's 200 locals.
+;(function()
+  local d = NS.DB()
+  local log = M.Log()
+  local function wipe() for i = #log, 1, -1 do log[i] = nil end end
+  local q = {}
+  _G.C_Timer = { After = function(_, fn) q[#q + 1] = fn end }
+  local function run() local t = q q = {} for _, fn in ipairs(t) do fn() end end
+  local now = 5000
+  _G.GetTime = function() return now end
+  d.gap, d.delay = 0, 0
+  for _, t in ipairs(M.TRIGGERS) do d[t.key] = true end
+  _G.UnitName = function(u) if u == "player" then return "Kumlust" end return "Someone" end
+  _G.UnitLevel = function() return 42 end
+  _G.UnitClass = function() return "Shaman", "SHAMAN" end
+  _G.UnitRace = function() return "Tauren", "Tauren" end
+  _G.GetInventoryItemLink = function(_, slot)
+    return slot == 16 and "|cffa335ee|Hitem:17182::::::::60:::::|h[Sulfuras]|h|r" or nil
+  end
+  _G.C_Map = {
+    GetBestMapForUnit = function() return 1413 end,
+    GetPlayerMapPosition = function() return { GetXY = function() return 0.51234, 0.3 end } end,
+  }
+  M.me = nil
+
+  H.section("0.9.0: whose memory - every note says who, where on the map, in what")
+  wipe()
+  local e = M.Shoot("manual", "a test")
+  H.eq(M.Me(), "Kumlust-Dreamscythe", "this character, by name and realm")
+  H.ok(e.char == "Kumlust-Dreamscythe" and e.class == "SHAMAN" and e.race == "Tauren", "the note says who took it",
+       tostring(e.char))
+  H.ok(e.map == 1413 and e.x == 0.5123 and e.y == 0.3, "and where on the map", tostring(e.x))
+  H.ok(type(e.gear) == "table" and e.gear[16] == 17182, "and what you wore (the item ids)")
+  H.ok(M.Word("levelup") == "Level up" and M.Word("manual") == "By hand", "the kinds in plain words")
+
+  -- EACH CHARACTER THEIR OWN PLACES (21 Oct review: an alt never had a first time where the main had been)
+  M.Char().zones = {}
+  M.zoneShots = 0
+  M.NewZone("Mulgore")                                    -- the first place: remembered, not shot
+  H.ok(M.NewZone("The Barrens") == "The Barrens", "the main: a new place")
+  M.me = nil
+  _G.UnitName = function(u) if u == "player" then return "Altie" end return "Someone" end
+  _G.UnitLevel = function() return 12 end
+  M.zoneShots = 0
+  H.ok(M.NewZone("Mulgore") == nil and M.NewZone("The Barrens") == "The Barrens",
+       "an alt's first time in the Barrens is hers, whoever went there before")
+  H.ok(d.chars["Kumlust-Dreamscythe"] and d.chars["Altie-Dreamscythe"], "each under their own name")
+
+  -- THE OLD SHARED LIST goes to the character who most likely made it - not to every alt
+  d.chars, d.zones = nil, { ["Orgrimmar"] = true }
+  log[1] = { reason = "levelup", level = 40, at = 1 }
+  M.me = nil
+  H.ok(M.Char().zones["Orgrimmar"] == nil and d.zones ~= nil, "a level 12 alt does not inherit the old list")
+  M.me = nil
+  _G.UnitName = function(u) if u == "player" then return "Kumlust" end return "Someone" end
+  _G.UnitLevel = function() return 41 end
+  H.ok(M.Char().zones["Orgrimmar"] == true and d.zones == nil, "the main does - and the shared list is gone")
+  wipe()
+
+  H.section("0.9.0: a boss's first kill, and a fastest yet")
+  d.bossEvery = false
+  M.Char().bosses = {}
+  _G.UnitGUID = function(u) return u == "boss1" and "Creature-0-1-2-3-11502-00012ABCDE" or nil end
+  M.OnEvent("ENCOUNTER_START", 672, "Ragnaros")
+  now = now + 300
+  local k1 = M.OnEvent("ENCOUNTER_END", 672, "Ragnaros", 9, 40, 1)
+  H.ok(k1 and k1.detail == "first kill: Ragnaros" and k1.secs == 300 and k1.npc == 11502,
+       "the first kill: a memory, timed, with the boss's npc id", k1 and k1.detail)
+  now = now + 5
+  H.eq(select(2, M.OnEvent("BOSS_KILL", 672, "Ragnaros")), "the same kill", "BOSS_KILL for the same kill: not twice")
+  now = now + 7 * 86400
+  M.OnEvent("ENCOUNTER_START", 672, "Ragnaros")
+  now = now + 400
+  local k2, why2 = M.OnEvent("ENCOUNTER_END", 672, "Ragnaros", 9, 40, 1)
+  H.ok(k2 == nil and why2 == "killed before", "a slower kill next week: not a memory", tostring(why2))
+  M.OnEvent("ENCOUNTER_START", 672, "Ragnaros")
+  now = now + 250
+  local k3 = M.OnEvent("ENCOUNTER_END", 672, "Ragnaros", 9, 40, 1)
+  H.ok(k3 and k3.detail == "Ragnaros - fastest yet, 4:10", "a faster one: the fastest yet", k3 and k3.detail)
+  H.eq(M.Char().bosses.Ragnaros.kills, 3, "three kills counted, the same kill heard twice counted once")
+  d.bossEvery = true
+  now = now + 1000
+  H.ok(M.OnEvent("BOSS_KILL", 672, "Ragnaros") ~= nil, "`every boss kill`: every kill, as before 0.9.0")
+  d.bossEvery = false
+
+  H.section("0.9.0: the right level on the ding")
+  local l1 = M.OnEvent("PLAYER_LEVEL_CHANGED", 9, 10)
+  H.ok(l1 and l1.detail == "level 10" and l1.level == 10, "PLAYER_LEVEL_CHANGED: the NEW level (its second answer)",
+       l1 and l1.detail)
+  local l2 = M.OnEvent("PLAYER_LEVEL_UP", 60)
+  H.ok(l2 and l2.detail == "level 60 - the top!", "the level cap says so", l2 and l2.detail)
+
+  H.section("0.9.0: a death worth keeping")
+  local recap
+  _G.C_DeathRecap = { GetRecapEvents = function() return recap end }
+  _G.BiSToolsAPI = { major = 1, version = 2, IsRival = function(n) return n == "Latina Fatty" end }
+  M.Char().firsts = {}
+  M.fighting = nil
+  recap = { { sourceName = "Kobold Vermin", sourceGUID = "Creature-0-1-2-3-6-0001ABCDEF" } }
+  local dd = M.OnEvent("PLAYER_DEAD")
+  H.ok(dd and dd.detail == "your first death - Kobold Vermin" and dd.npc == 6, "this character's first death",
+       dd and dd.detail)
+  local dd2, why = M.OnEvent("PLAYER_DEAD")
+  H.ok(dd2 == nil and why == "not a death worth keeping", "a kobold again: not a memory", tostring(why))
+  recap = { { sourceName = "Neg Crotic", sourceGUID = "Player-1-0ABC" } }
+  dd = M.OnEvent("PLAYER_DEAD")
+  H.ok(dd and dd.detail == "killed by Neg Crotic" and dd.killer == "Neg Crotic", "killed by a player")
+  recap = { { sourceName = "Latina Fatty", sourceGUID = "Player-1-0DEF" } }
+  dd = M.OnEvent("PLAYER_DEAD")
+  H.ok(dd and dd.detail == "killed by your rival Latina Fatty", "killed by a rival (BiS Tools' API)", dd and dd.detail)
+  recap = { { sourceName = "Son of Flame", sourceGUID = "Creature-0-1-2-3-12143-0001ABCDEF" } }
+  M.OnEvent("ENCOUNTER_START", 672, "Ragnaros")
+  dd = M.OnEvent("PLAYER_DEAD")
+  H.ok(dd and dd.detail == "died fighting Ragnaros", "dying in a boss fight", dd and dd.detail)
+  M.OnEvent("ENCOUNTER_END", 672, "Ragnaros", 9, 40, 0)
+  H.eq(M.fighting, nil, "a wipe ends the fight")
+  d.deathEvery = true
+  recap = nil
+  H.ok(M.OnEvent("PLAYER_DEAD") ~= nil, "`every death`: every one")
+  d.deathEvery = false
+  -- A BATTLEGROUND (Arn, 21 Oct: seventeen Darkspear Islands deaths in one album)
+  local realInst = _G.IsInInstance
+  _G.IsInInstance = function() return true, "pvp" end
+  M.Char().firsts = {}
+  recap = { { sourceName = "Neg Crotic", sourceGUID = "Player-1-0ABC" } }
+  local bg, bgWhy = M.OnEvent("PLAYER_DEAD")
+  H.ok(bg == nil and bgWhy == "a battleground death - only a rival's kill is kept there",
+       "a battleground: killed by a player is no memory", tostring(bgWhy))
+  H.eq(M.Char().firsts.death, nil, "and it does not use up the first death")
+  recap = { { sourceName = "Latina Fatty", sourceGUID = "Player-1-0DEF" } }
+  bg = M.OnEvent("PLAYER_DEAD")
+  H.ok(bg and bg.detail == "killed by your rival Latina Fatty", "a rival's kill still is")
+  _G.IsInInstance = function() return true, "arena" end
+  recap = { { sourceName = "Neg Crotic", sourceGUID = "Player-1-0ABC" } }
+  H.eq((M.OnEvent("PLAYER_DEAD")), nil, "an arena the same")
+  _G.IsInInstance = realInst
+
+  H.section("0.9.0: exalted, firsts, the gamba")
+  _G.FACTION_STANDING_LABEL8 = "Exalted"
+  _G.FACTION_STANDING_CHANGED = "You are now %s with %s."
+  local x1 = M.OnEvent("CHAT_MSG_SYSTEM", "You are now Exalted with Thunder Bluff.")
+  H.ok(x1 and x1.reason == "exalted" and x1.detail == "Exalted with Thunder Bluff", "exalted, from the system line too",
+       x1 and x1.detail)
+  H.eq(M.OnEvent("CHAT_MSG_SYSTEM", "You are now Revered with Thunder Bluff."), nil, "revered is not")
+  M.Char().firsts = {}
+  local m1 = M.OnEvent("NEW_MOUNT_ADDED", 5)
+  H.ok(m1 and m1.detail == "your first mount", "your first mount")
+  H.ok((M.OnEvent("NEW_MOUNT_ADDED", 6) or {}).detail == "a new mount", "then a new mount")
+  H.eq(M.OnEvent("COMPANION_LEARNED", "CRITTER"), nil, "a pet is not a mount")
+  _G.GetSpellInfo = function(id) return id == 33388 and "Apprentice Riding" or "Fireball" end
+  local r1 = M.OnEvent("LEARNED_SPELL_IN_TAB", 33388)
+  H.ok(r1 and r1.detail == "learned to ride - Apprentice Riding", "learning to ride", r1 and r1.detail)
+  H.eq(M.OnEvent("LEARNED_SPELL_IN_TAB", 33388), nil, "only the first time")
+  H.eq(M.OnEvent("LEARNED_SPELL_IN_TAB", 133), nil, "a fireball is not a first")
+  local cb
+  _G.BiSGambaAPI = { major = 1, RegisterCallback = function(_, ev, fn) if ev == "BiSGamba_RoundEnded" then cb = fn end return true end }
+  M.gambaHooked = nil
+  H.ok(M.HookGamba() and cb, "BiS Gamba's rounds, heard through its API")
+  M.Char().gambaBest = nil
+  H.ok(cb("BiSGamba_RoundEnded", { winner = "Kumlust", loser = "Kumlance", amount = 100 }) == nil and log[1].reason == "gamba"
+       and log[1].detail == "won 100g from Kumlance - your biggest yet", "a win: your biggest yet", log[1].detail)
+  H.eq(M.GambaRound({ winner = "Kumlust", loser = "X", amount = 50 }), nil, "a smaller one: not")
+  H.eq(M.GambaRound({ winner = "Kumlance", loser = "Kumlust", amount = 500 }), nil, "someone else's win: not")
+  H.ok(M.GambaRound({ winner = "Kumlust Surname", loser = "X", amount = 200 }) ~= nil, "a bigger one, under the full name: yes")
+  _G.BiSGambaAPI, _G.BiSToolsAPI = nil, nil
+
+  H.section("0.9.0: clean shots - the interface hidden for the instant of the picture")
+  local vis = {}
+  _G.SetUIVisibility = function(v) vis[#vis + 1] = v end
+  d.clean, d.delay = true, 0.6
+  M.Shoot("manual", "clean")
+  H.eq(#vis, 0, "nothing hidden before the shutter")
+  q[1]()
+  table.remove(q, 1)
+  H.ok(vis[1] == false and M.uiHidden, "the shutter: hidden")
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  H.ok(vis[2] == true and not M.uiHidden, "the picture written: back")
+  M.Shoot("manual", "the event never comes")
+  run()
+  run()
+  H.ok(vis[#vis] == true and not M.uiHidden, "and if the client never says, back after a moment anyway")
+  d.clean = false
+  local before = #vis
+  M.Shoot("manual", "not clean")
+  run()
+  H.eq(#vis, before, "switched off: the interface stays")
+  d.delay, d.clean = 0, true
+  _G.SetUIVisibility = nil
+
+  H.section("0.9.0: on this day")
+  wipe()
+  local t = os.time({ year = 2027, month = 11, day = 4, hour = 20 })
+  table.insert(log, { reason = "zone", detail = "Durotar", at = os.time({ year = 2026, month = 11, day = 4, hour = 9 }) })
+  table.insert(log, 1, { reason = "boss", detail = "first kill: Onyxia", at = os.time({ year = 2026, month = 11, day = 4, hour = 21 }) })
+  table.insert(log, 1, { reason = "levelup", detail = "level 30", at = os.time({ year = 2027, month = 10, day = 4, hour = 21 }) })
+  d.otdShown, d.onThisDay = nil, true
+  said = {}
+  local o, words = M.OnThisDay(t)
+  H.ok(o and o.detail == "first kill: Onyxia" and words == "A year ago today", "a year ago today - the best of that day",
+       tostring(words))
+  H.ok(table.concat(said, " "):find("A year ago today", 1, true) and NS.J.toast and NS.J.toast:IsShown(),
+       "a line in chat and a card on screen")
+  H.eq(M.OnThisDay(t + 3600), nil, "once a day")
+  wipe()
+  table.insert(log, { reason = "levelup", detail = "level 30", at = os.time({ year = 2027, month = 9, day = 4, hour = 21 }) })
+  d.otdShown = nil
+  local o2, w2 = M.OnThisDay(t)
+  H.ok(o2 and w2 == "2 months ago today", "the first year: a month (or two) ago today", tostring(w2))
+  NS.J.toast:Hide()
+
+  H.section("0.9.0: the year so far")
+  wipe()
+  local Y = tonumber(os.date("%Y"))
+  local y0 = os.time({ year = Y, month = 1, day = 2 })
+  for i, l in ipairs({ 10, 11, 12 }) do
+    table.insert(log, 1, { reason = "levelup", level = l, detail = "level " .. l, at = y0 + i * 7200, char = "Kumlust-Dreamscythe" })
+  end
+  table.insert(log, 1, { reason = "boss", detail = "first kill: Hogger", at = y0 + 30000, char = "Kumlust-Dreamscythe" })
+  table.insert(log, 1, { reason = "death", detail = "killed by X", at = y0 + 31000, char = "Altie-Dreamscythe" })
+  local s = M.Summary(Y, "Kumlust-Dreamscythe")
+  local lines = table.concat(M.SummaryLines(s), " | ")
+  H.ok(s.total == 4 and lines:find("levels 10 to 12, about 2 h 0 min a level", 1, true) and lines:find("1 first kill: Hogger", 1, true)
+       and not lines:find("death", 1, true), "this character's year: levels, how long each took, first kills", lines)
+  H.eq(M.Summary(Y).total, 5, "every character's: the alt's death too")
+  said = {}
+  NS.Slash("year all")
+  H.ok(table.concat(said, " "):find("5 memories in " .. Y, 1, true), "/bism year all", table.concat(said, " | "))
+
+  H.section("0.9.0: the group photo")
+  wipe()
+  H.inRaid = false
+  _G.IsInGroup = function() return H.inRaid end
+  H.eq(select(2, M.GroupPhoto()), "not in a group", "alone: no group photo")
+  H.inRaid, H.raid = true, { { name = "Kumlust" }, { name = "Kumlance" } }
+  local wire = #H.wire
+  local chat = #H.sent
+  q = {}
+  H.ok(M.GroupPhoto(3), "in a group: called")
+  local snap = false
+  for i = wire + 1, #H.wire do if tostring(H.wire[i].msg):find("MEM", 1, true) and tostring(H.wire[i].msg):find("SNAP", 1, true) then snap = true end end
+  H.ok(snap, "the call goes out on the BiS channel, to the group")
+  H.ok(#H.sent > chat and H.sent[#H.sent].msg:find("say cheese", 1, true), "and one line in group chat for the rest")
+  H.ok(NS.J.counter and NS.J.counter:IsShown() and strip(NS.J.counter.big._text) == "3", "a countdown on screen: 3")
+  run() run()
+  H.eq(strip(NS.J.counter.big._text), "1", "2, 1...")
+  run()
+  H.ok(log[1] and log[1].reason == "group" and not NS.J.counter:IsShown() and not M.counting, "...and everyone's picture", log[1] and log[1].detail)
+  -- someone else's call, heard on the channel
+  local h = _G.LibBiSComm.handlers and _G.LibBiSComm.handlers.MEM and _G.LibBiSComm.handlers.MEM.SNAP
+  H.ok(type(h) == "function", "the call is listened for")
+  h("Kumlance", "2")
+  H.ok(M.counting and strip(NS.J.counter.big._text) == "2", "someone else's call: the countdown here too")
+  run() run() run()
+  H.ok(log[1].detail == "a group photo - called by Kumlance", "the picture says who called it", log[1].detail)
+  h("Kumlust", "2")
+  H.ok(not M.counting, "your own call, echoed back, is not counted twice")
+  H.inRaid = false
+
+  H.section("0.9.0: where - the journal's map and the world map's pins")
+  wipe()
+  _G.C_Map.GetMapArtLayers = function() return { { layerWidth = 1002, layerHeight = 668, tileWidth = 256, tileHeight = 256 } } end
+  _G.C_Map.GetMapArtLayerTextures = function() local f = {} for i = 1, 12 do f[i] = 1000 + i end return f end
+  _G.C_Map.GetMapRectOnMap = function(from, to) if to == 947 then return 0.4, 0.6, 0.3, 0.5 end end
+  table.insert(log, { reason = "boss", detail = "first kill: Hogger", at = 1, map = 1429, x = 0.5, y = 0.5, char = "Kumlust-Dreamscythe" })
+  table.insert(log, { reason = "zone", detail = "Westfall", at = 2, map = 1436, x = 0.2, y = 0.8, char = "Kumlust-Dreamscythe" })
+  table.insert(log, { reason = "death", detail = "inside", at = 3, zone = "The Deadmines", char = "Kumlust-Dreamscythe" })
+  table.insert(log, { reason = "zone", detail = "the alt's", at = 4, map = 1411, x = 0.5, y = 0.5, char = "Altie-Dreamscythe" })
+  local MV = NS.MapView
+  H.eq(MV.Start(), 947, "the map opens on Azeroth")
+  local x, y = MV.OnMap(1429, 0.5, 0.5, 947)
+  H.ok(math.abs(x - 0.5) < 1e-9 and math.abs(y - 0.4) < 1e-9, "a zone's spot placed on the world by the client's own rectangle")
+  local dots, inside = MV.Dots(log, 947)
+  H.ok(#dots == 3 and inside == 1, "a dot for each memory out in the world; the one in a dungeon has no spot", #dots .. "/" .. inside)
+  -- the world map's pins (HereBeDragons, through the stand-in above)
+  M.me = nil
+  d.pins = "mine"
+  H.eq(NS.Pins.Update(), 2, "pins: this character's memories with a spot")
+  local n = 0
+  for _, p in pairs(PINS.world) do n = n + 1 H.ok(p.flag == _G.HBD_PINS_WORLDMAP_SHOW_PARENT, "on the zone map and one up") end
+  H.eq(n, 2, "and the library has them")
+  d.pins = "all"
+  H.eq(NS.Pins.Update(), 3, "every character's, when asked")
+  d.pins = "off"
+  H.eq(NS.Pins.Update(), 0, "or none")
+  n = 0
+  for _ in pairs(PINS.world) do n = n + 1 end
+  H.eq(n, 0, "taken off the map")
+  d.pins = "mine"
+
+  H.section("0.9.0: the journal - list, postcard, map, year")
+  local J = NS.J
+  J.everyone, J.sel, J.page = nil, nil, "memories"
+  wipe()
+  local mine = { reason = "boss", detail = "first kill: Ragnaros", zone = "Molten Core", level = 60, at = os.time() - 600,
+                 with = { "Kumlance Wildhammer", "Neg Crotic" }, withClass = { "MAGE", false },
+                 char = "Kumlust-Dreamscythe", npc = 11502, secs = 250,
+                 gear = { [16] = 17182, [1] = 16900 }, file = "WoWScrnShot_102126_201500" }
+  local theirs = { reason = "levelup", detail = "level 20", zone = "Mulgore", at = os.time() - 300, char = "Altie-Dreamscythe" }
+  table.insert(log, 1, mine)
+  table.insert(log, 1, theirs)
+  J.Show()
+  H.eq(#J.Entries(), 1, "this character's memories by default")
+  J.frame.who:Click()
+  H.eq(#J.Entries(), 2, "the header's button: every character's")
+  H.ok(strip(J.frame.rows[2]._text):find("Level up  level 20", 1, true), "rows in plain words", strip(J.frame.rows[2]._text))
+  local hitMine
+  for i, hit in ipairs(J.frame.hits) do if hit.entry == mine then hitMine = hit end end
+  hitMine:Click()
+  local f = J.frame
+  H.ok(J.sel == mine and strip(f.kind._text):find("^Boss") and f.text._text == "first kill: Ragnaros", "click a row: the detail")
+  H.ok(strip(f.whoWith._text) == "with" and f.withBtns[1]:IsShown() and f.withBtns[1].who == "Kumlance Wildhammer"
+       and f.withBtns[2].who == "Neg Crotic" and strip(f.more._text):find("the fight took 4:10", 1, true),
+       "who was there - a name each - and the fight's time")
+  -- a year on: click a name, the game's own player menu (whisper, invite, friend, BiS Tools' pal line)
+  local menu
+  _G.UnitPopup_OpenMenu = function(kind, ctx) menu = kind .. ":" .. tostring(ctx.name) end
+  f.withBtns[1]:Click()
+  H.eq(menu, "FRIEND:Kumlance Wildhammer", "click a name: the game's menu for them, by their whole name")
+  _G.UnitPopup_OpenMenu = nil
+  H.ok(f.withBtns[1].fs._color and f.withBtns[1].fs._color[1] > 0, "in their class colour")
+  H.eq(f.fileBox._text, "WoWScrnShot_102126_201500", "the picture's file name, ready to copy")
+  local you, them = f.post.you, f.post.them
+  H.ok(you._unit == "player" and you._undressed and #you._tried == 2 and you._anim == J.POSE.boss,
+       "THE POSTCARD: you, in what you wore, in the moment's pose", tostring(you._anim))
+  H.ok(them:IsShown() and them._creature == 11502 and them._anim == 1, "beside the boss, where it fell")
+  fitsIn(f, "the journal, a memory open")
+  for i, hit in ipairs(J.frame.hits) do if hit.entry == theirs then hit:Click() end end
+  H.ok(not you:IsShown() and strip(f.post.note._text) == "played by Altie" and not them:IsShown(),
+       "another character's memory: no body to draw - it says who")
+  J.Tab("map")
+  H.ok(f.map:IsShown() and not f.list:IsShown() and strip(f.map.say._text):find("on the map", 1, true), "the map page",
+       strip(f.map.say._text))
+  fitsIn(f, "the journal's map")
+  J.Tab("this year")
+  H.ok(f.year:IsShown() and strip(f.year.lines[1]._text):find("memories in", 1, true), "the year page")
+  fitsIn(f, "the journal's year")
+  J.Tab("memories")
+  J.Hide()
+  J.everyone = nil
+
+  H.section("0.9.0: the options window and the minimap button")
+  local CFG = NS.CFG
+  local w = CFG.Build()
+  H.ok(w and CFG.columns == 2, "the options window, two columns")
+  local rows = CFG.Rows()
+  H.ok(#rows >= 20, "every setting has a row now, not just a slash command", #rows)
+  for _, opt in ipairs(rows) do
+    if opt.key == "boss" then opt.set(d, false) H.eq(d.boss, false, "a row's switch is the same switch /bism uses") opt.set(d, true) end
+  end
+  fire("PLAYER_LOGIN")
+  local b = CFG.button
+  H.ok(b and b.icon and b.icon._texture == "Interface\\Icons\\INV_Misc_Spyglass_03", "the minimap button, the spyglass")
+  b:Fire("OnClick", "LeftButton")
+  H.ok(J.frame:IsShown(), "a click opens the journal")
+  b:Fire("OnClick", "LeftButton")
+  b:Fire("OnClick", "RightButton")
+  H.ok(w:IsShown(), "a right-click, the options")
+  CFG.SetMinimap(false)
+  H.ok(not b:IsShown() and d.minimap.hide == true, "and the button can be hidden")
+  CFG.SetMinimap(true)
+
+  H.section("0.9.0: which saved copy came back (/bism db)")
+  said = {}
+  NS.Slash("db")
+  H.ok(table.concat(said, " "):find("the account-wide file came back", 1, true), "/bism db says", table.concat(said, " | "))
+  fire("PLAYER_LOGOUT")
+  H.ok(type(d.stamp) == "number", "logging out stamps the file")
+
+  H.section("0.9.0: lean - a raid's loot and system lines")
+  local Cost = dofile(ROOT .. "/../_bisdev/dev/cost.lua")
+  _G.GetItemInfo = function() return "x", "x", 4 end
+  local others = "Neg Crotic receives loot: |cffa335ee|Hitem:19019::::::::60:::::|h[Thunderfury]|h|r."
+  local nL, byL = Cost.Count(function() for _ = 1, 500 do M.OnEvent("CHAT_MSG_LOOT", others) end end)
+  H.ok(nL <= 500, "500 of other people's epics: at most one question each - " .. nL, Cost.Top(byL))
+  local nS, byS = Cost.Count(function() for _ = 1, 500 do M.OnEvent("CHAT_MSG_SYSTEM", "Kumlance has come online.") end end)
+  H.ok(nS <= 1000, "500 system lines: at most two questions each - " .. nS, Cost.Top(byS))
+  wipe()
+end)()
+
+
+;(function()
+  local M, J, MV = NS.M, NS.J, NS.MapView
+  local log = M.Log()
+  local d = NS.DB()
+  local function wipe() for k = #log, 1, -1 do log[k] = nil end end
+
+  H.section("21 Oct: who was there, by their whole names")
+  local real = { _G.GetUnitName, _G.UnitName, _G.UnitClass, _G.UnitIsUnit, _G.GetNumGroupMembers, _G.IsInRaid, _G.UnitExists }
+  local P = { party1 = { "Chain Healz", "SHAMAN" }, party2 = { "Neg Crotic", "WARLOCK" } }
+  -- Forever, measured: UnitName is the first name, GetUnitName(unit, false) the whole one
+  _G.GetUnitName = function(u) return P[u] and P[u][1] or "Kumlust Wildhammer" end
+  _G.UnitName = function(u) local p = P[u] return p and p[1]:match("^%S+") or "Kumlust" end
+  _G.UnitClass = function(u) local p = P[u] return "x", p and p[2] or "MAGE" end
+  _G.UnitIsUnit = function(a, b) return a == b end
+  _G.GetNumGroupMembers = function() return 3 end
+  _G.IsInRaid = function() return false end
+  _G.UnitExists = function(u) return P[u] ~= nil end
+  local names, classes = M.Party()
+  H.ok(#names == 2 and names[1] == "Chain Healz" and classes[1] == "SHAMAN" and names[2] == "Neg Crotic",
+       "whole names (to invite them a year on), with their classes", table.concat(names, ","))
+  _G.GetUnitName, _G.UnitName, _G.UnitClass, _G.UnitIsUnit, _G.GetNumGroupMembers, _G.IsInRaid, _G.UnitExists =
+    real[1], real[2], real[3], real[4], real[5], real[6], real[7]
+
+  H.section("21 Oct: the old notes find their characters")
+  wipe()
+  -- before 0.9.0: no character, only a level and a time; the main at 15+, a rogue alt at 1-5 the same evening
+  local main1 = { reason = "boss", detail = "Charlga Razorflank", level = 15, at = 1000 }
+  local alt1 = { reason = "levelup", detail = "level 2", level = 1, at = 1100 }
+  local main2 = { reason = "death", detail = "x", level = 16, at = 1200 }
+  local alt2 = { reason = "levelup", detail = "level 5", level = 4, at = 1300 }
+  local nolvl = { reason = "zone", detail = "y", level = 0, at = 1400 }
+  for _, e in ipairs({ nolvl, alt2, main2, alt1, main1 }) do log[#log + 1] = e end
+  local tracks = M.Tracks()
+  H.eq(#tracks, 2, "two tracks: levels only go up")
+  local realLevel, realMe = _G.UnitLevel, M.Me
+  _G.UnitLevel = function() return 60 end
+  M.Me = function() return "Main-Realm" end
+  H.eq(M.ClaimOld(), 2, "the main (60) claims the long track")
+  H.ok(main1.char == "Main-Realm" and main2.char == "Main-Realm" and alt1.char == nil, "its notes, not the alt's")
+  _G.UnitLevel = function() return 9 end
+  M.Me = function() return "Rogue-Realm" end
+  H.eq(M.ClaimOld(), 2, "the rogue (9) claims the levels 1 to 5")
+  H.ok(alt1.char == "Rogue-Realm" and alt2.char == "Rogue-Realm" and nolvl.char == nil, "and a note with no level stays nobody's")
+  H.eq(M.ClaimOld(), 0, "nothing is given twice")
+  -- the postcard draws only the character who took it
+  M.Me = function() return "Main-Realm" end
+  J.Show()
+  J.Select(alt1)
+  H.ok(not J.frame.post.you:IsShown(), "the main does not stand in the rogue's level-up")
+  J.Select(nolvl)
+  H.ok(not J.frame.post.you:IsShown() and J.frame.post.note._text:find("older picture", 1, true), "an unclaimed old note: nobody, and why")
+  _G.UnitLevel, M.Me = realLevel, realMe
+
+  H.section("21 Oct: an old boss note gets its face")
+  d.faces = nil
+  M.faceless = nil
+  local set = M.Faceless()
+  H.ok(set["Charlga Razorflank"], "an old boss note without a face is known")
+  local realTarget, realGUID = _G.UnitName, _G.UnitGUID
+  _G.UnitName = function(u) if u == "target" then return "Charlga Razorflank" end return "Kumlust" end
+  _G.UnitGUID = function() return "Creature-0-1-2-3-4421-0001ABCDEF" end
+  M.OnEvent("PLAYER_TARGET_CHANGED")
+  H.eq(d.faces and d.faces["Charlga Razorflank"], 4421, "target her once: her id is kept")
+  H.eq(M.Face(main1), 4421, "and the old postcard has its boss")
+  local asked = 0
+  _G.UnitName = function() asked = asked + 1 return "x" end
+  M.faceless = nil
+  M.OnEvent("PLAYER_TARGET_CHANGED")
+  H.eq(asked, 0, "no old boss left without a face: a target change asks the client nothing")
+  _G.UnitName, _G.UnitGUID = realTarget, realGUID
+  H.eq(M.BossName({ reason = "boss", detail = "SURVIVOR.EXE: Ragnaros slain over The Barrens" }), nil, "BiS Shell's games are no creature")
+
+  H.section("21 Oct: old notes on the map, by their zone")
+  MV.zoneIDs = nil
+  _G.C_Map.GetMapChildrenInfo = function() return { { mapID = 1413, name = "The Barrens" }, { mapID = 1456, name = "Thunder Bluff" } } end
+  wipe()
+  log[1] = { reason = "zone", detail = "a", zone = "The Barrens - The Crossroads", at = 5000, char = "Kumlust-Dreamscythe" }
+  log[2] = { reason = "death", detail = "b", zone = "Darkspear Islands - Camp", at = 5001, char = "Kumlust-Dreamscythe" }
+  log[3] = { reason = "boss", detail = "c", zone = "The Barrens", at = 5002, map = 1413, x = 0.3, y = 0.3, char = "Kumlust-Dreamscythe" }
+  local dots, inside, off, rough = MV.Dots(log, 947)
+  H.ok(#dots == 2 and rough == 1 and inside == 1, "an old note goes by its zone; a battleground stays without a place",
+       #dots .. "/" .. tostring(rough) .. "/" .. tostring(inside))
+  J.Tab("map")
+  J.Show()
+  H.ok(J.frame.map.say._text:find("placed by their zone", 1, true) and J.frame.map.say._text:find("1 inside a dungeon or battleground", 1, true)
+       and not J.frame.map.say._text:find("raids, where", 1, true), "the map says which is which", J.frame.map.say._text)
+  _G.C_Map.GetMapChildrenInfo = nil
+  MV.zoneIDs = nil
+
+  H.section("21 Oct: the year counts the old notes, and /bism year opens it")
+  wipe()
+  local y = tonumber(os.date("%Y"))
+  log[1] = { reason = "zone", detail = "new", at = os.time(), char = M.Me() }
+  log[2] = { reason = "zone", detail = "old", at = os.time() - 60 }
+  H.eq(M.Summary(y, M.Me()).total, 2, "an unclaimed old note counts, as the journal shows it")
+  J.Hide()
+  NS.Slash("year")
+  H.ok(J.frame:IsShown() and J.page == "this year", "/bism year opens the page")
+  J.Hide()
+  J.Tab("memories")
+  wipe()
+end)()
 
 H.report()

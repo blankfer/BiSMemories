@@ -4,7 +4,7 @@
 ## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
 ## Notes: Takes a screenshot when something worth remembering happens, and keeps a note of what it was.
 ## Author: Arn
-## Version: 0.8.1
+## Version: 0.9.0
 ## SavedVariables: BiSMemoriesDB
 ## SavedVariablesPerCharacter: BiSMemoriesCharDB
 ## OptionalDeps: BiSTheme
@@ -13,10 +13,20 @@
 ## X-CurseForge-GameVersionType: Burning Crusade
 
 Libs\BiSTheme\Console.lua
+Libs\BiSTheme\Options.lua
+Libs\BiSTheme\Minimap.lua
 Libs\LibBiSComm-1.0\LibBiSComm-1.0.lua
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\HereBeDragons\HereBeDragons-2.0.lua
+Libs\HereBeDragons\HereBeDragons-Pins-2.0.lua
 
 Core\Init.lua
 Core\Memories.lua
+Core\Moments.lua
 API.lua
+Core\Map.lua
 Core\Journal.lua
+Core\Pins.lua
+UI\Options.lua
 Core\Slash.lua

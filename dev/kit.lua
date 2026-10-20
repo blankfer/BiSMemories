@@ -83,6 +83,7 @@ local function newTexture(owner)
     function t:Show() self._shown = true end
     function t:Hide() self._shown = false end
     function t:IsShown() return self._shown end
+    function t:SetShown(v) self._shown = v and true or false end
     return autoMethods(t)
 end
 
@@ -136,6 +137,7 @@ local function newFontString(owner, template)
     function f:Show() self._shown = true end
     function f:Hide() self._shown = false end
     function f:IsShown() return self._shown end
+    function f:SetShown(v) self._shown = v and true or false end
     return autoMethods(f)
 end
 
@@ -206,6 +208,7 @@ local function newFrame(ftype, name, parent)
     function fr:Show() self._shown = true end
     function fr:Hide() self._shown = false end
     function fr:IsShown() return self._shown end
+    function fr:SetShown(v) if v then self:Show() else self:Hide() end end   -- the client's frames have it
     function fr:IsVisible()
         if not self._shown then return false end
         local up = self._parent
@@ -230,6 +233,23 @@ local function newFrame(ftype, name, parent)
     function fr:SetVerticalScroll(v) self._scroll = v end
     function fr:GetVerticalScroll() return self._scroll or 0 end
     function fr:SetScrollChild(c) self._child = c end
+
+    -- A 3D MODEL (BiS Memories' postcard, 21 Oct 2026): what it was asked to show, kept, so a test
+    -- can say who is in it, dressed in what, doing which pose. A creature id must be a number - the
+    -- client refuses anything else. TryOn and Undress are UNVERIFIED on Forever (a frame's methods are
+    -- not in the census); the code pcalls them.
+    if ftype == "DressUpModel" or ftype == "PlayerModel" then
+        function fr:SetUnit(u) self._unit, self._creature, self._tried = u, nil, {} end
+        function fr:SetCreature(id)
+            if type(id) ~= "number" then error("SetCreature needs an npc id", 0) end
+            self._creature, self._unit = id, nil
+        end
+        function fr:ClearModel() self._unit, self._creature, self._tried = nil, nil, {} end
+        function fr:Undress() self._undressed = true self._tried = {} end
+        function fr:TryOn(link) self._tried = self._tried or {} self._tried[#self._tried + 1] = link end
+        function fr:SetAnimation(n) self._anim = n end
+        function fr:SetFacing(r) self._facing = r end
+    end
 
     if ftype == "EditBox" then
         function fr:SetText(v)
