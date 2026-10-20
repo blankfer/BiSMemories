@@ -23,13 +23,15 @@ Click a picture to see it full size, the arrow keys move between them, Escape or
 NEXT TIME, NO DRAGGING
 ----------------------
 
-In Chrome and Edge the page remembers the folder you dropped. Next time it shows "Open my album":
-one click, and your browser asks whether the page may read the folder - choose "Allow on every
-visit" and from then on the album simply opens. It reads the folder fresh each time, so new
-pictures and the newest notes are always there.
+After one drag the page knows where your pictures and notes are. From then on, just open the
+page and your album is there - with the notes as of your last logout or /reload. A picture you
+took yourself (Print Screen) since your last drag shows after the next drag.
 
 "Make a desktop icon" (at the top, once the album is open) puts a shortcut on your desktop that
 opens this page. Double-click it and you are in your album.
+
+The page shows you where your game folder is, with a Copy button: paste it into File Explorer's
+address bar to get straight to the folder you drag.
 
 
 FINDING ONE PICTURE

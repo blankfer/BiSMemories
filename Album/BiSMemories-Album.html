@@ -123,15 +123,7 @@
   @keyframes slide { 0% { left: -30%; } 100% { left: 100%; } }
   .busy .what { color: var(--muted); font-size: 13px; margin-top: 6px; }
   .busy .what b { color: var(--ink); }
-  /* THE FOLDER, REMEMBERED: next time one button instead of a drag */
-  .again { margin: 6px 0 0; padding: 22px; border: 1px solid var(--accent); border-radius: 12px; max-width: 760px;
-           background: #221d18; }
-  .again h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
-  .again p { margin: 4px 0 12px; color: var(--muted); }
-  .bigbtn { font: inherit; font-size: 16px; font-weight: 600; padding: 11px 20px; border-radius: 8px; cursor: pointer;
-            color: #14121a; background: var(--accent); border: 1px solid var(--accent); }
-  .bigbtn:hover { filter: brightness(1.08); }
-  .link { color: var(--muted); cursor: pointer; text-decoration: underline; font-size: 13px; margin-left: 12px; }
+  .link { color: var(--muted); cursor: pointer; text-decoration: underline; font-size: 13px; margin-left: 8px; }
   .link:hover { color: var(--ink); }
   .small summary { cursor: pointer; }
   /* the whole page is a drop target, because the button is unavoidable and dragging is kinder */
@@ -172,16 +164,19 @@
 
 <main>
   <div class="empty" id="empty">
-    <div class="again" id="again-box" style="display:none">
-      <h2>Your album</h2>
-      <p>This page remembers your WoW folder (<b id="again-name"></b>). Your browser may ask once more
-         whether it may read it &mdash; choose <i>Allow on every visit</i> and next time it simply opens.</p>
-      <button class="bigbtn" id="open-saved" type="button">Open my album</button>
-      <span class="link" id="forget-folder">forget the folder</span>
-    </div>
     <div class="drop" id="drop-box">
       <h2>Drag your WoW folder onto this page</h2>
-      <p>Open <code>C:\Program Files (x86)\World of Warcraft</code> in File Explorer and drag the
+      <!-- THE PAGE KNOWS WHERE IT IS (Arn, 21 Oct 2026: "once we open the album does it not know where its at
+           ... i am ...\_classic_beta_\Interface\AddOns\BiSMemories\Album and i need to get from here
+           ...\_classic_beta_"): opened from the game's folder, it reads its own address and gives the exact
+           folder to open, with a Copy button. Opened from anywhere else, the general words stay. -->
+      <div id="where-steps" style="display:none">
+        <p><b>1.</b> Copy where your game is:
+           <code id="where-path"></code> <button class="btn" id="where-copy" type="button">Copy</button></p>
+        <p><b>2.</b> In File Explorer, click the address bar at the top, paste, and press Enter.</p>
+        <p><b>3.</b> Drag the <code id="where-ver"></code> folder you see there onto this page.</p>
+      </div>
+      <p id="where-plain">Open <code>C:\Program Files (x86)\World of Warcraft</code> in File Explorer and drag the
          <code>_classic_beta_</code> folder here. That is all: the page finds your pictures and the
          addon's notes inside it by itself.</p>
       <label class="btn">or pick the folder
@@ -478,6 +473,7 @@ function render() {
       img.loading = "lazy";
       img.src = s.url;
       img.alt = s.name;
+      if (!s.file) img.onerror = function () { fig.remove(); };
       fig.appendChild(img);
 
       var cap = document.createElement("figcaption");
@@ -565,6 +561,23 @@ document.getElementById("clear").onclick = function () {
 // kindest thing is to accept the folder dropped on the page. Measured 3 Oct 2026: the modern
 // picker IS present on a file:// page and refuses the folder outright, "file:/// can't open this
 // folder because it contains system files".
+// the album from names alone: the picture is loaded from beside the page; a deleted one hides itself
+function loadNames(names) {
+  shots = [];
+  names.forEach(function (n) {
+    if (!/\.(jpe?g|png|tga)$/i.test(n)) return;
+    var base = n.replace(/\.[a-z]+$/i, "");
+    shots.push({ file: null, name: n, url: rel("Screenshots/" + n), at: stamp(n), note: notes[base] || null });
+  });
+  shots.sort(function (a, b) {
+    if (!a.at && !b.at) return a.name < b.name ? 1 : -1;
+    if (!a.at) return 1;
+    if (!b.at) return -1;
+    return b.at - a.at;
+  });
+  render();
+}
+
 function loadFiles(files) {
   shots = [];
   files.forEach(function (f) {
@@ -641,11 +654,13 @@ function counted(path) {
   var k = kindOf(path);
   if (k === "picture") P.pictures++;
   else if (k === "notes") P.notes++;
-  return k;
+  return k;   // "character notes" too: kept for their place, not read
 }
 
-// a dropped directory arrives as an entry tree, not a file list, so it is walked - only where it is worth it
-function walk(entry, out, depth) {
+// a dropped directory arrives as an entry tree, not a file list, so it is walked - only where it is worth it.
+// Under WTF, everywhere: the realm and character folders are small, and they hold the copy of the notes the
+// page can open by itself next time (see THE ALBUM WITHOUT A DRAG).
+function walk(entry, out, depth, deep) {
   depth = depth || 0;
   return new Promise(function (done) {
     if (!entry) return done();
@@ -653,13 +668,14 @@ function walk(entry, out, depth) {
       if (!counted(entry.fullPath || entry.name)) return done();
       return entry.file(function (f) { f._path = entry.fullPath || f.name; out.push(f); done(); }, done);
     }
-    if (!entry.isDirectory || (depth > 0 && !worthWalking(entry.name, depth)) || depth > 7) return done();
+    deep = deep || /^WTF$/i.test(entry.name);
+    if (!entry.isDirectory || (depth > 0 && !deep && !worthWalking(entry.name, depth)) || depth > 9) return done();
     P.folders++;
     var reader = entry.createReader(), all = [];
     (function more() {
       reader.readEntries(function (batch) {
         if (!batch.length) {
-          Promise.all(all.map(function (e) { return walk(e, out, depth + 1); })).then(function () { done(); });
+          Promise.all(all.map(function (e) { return walk(e, out, depth + 1, deep); })).then(function () { done(); });
           return;
         }
         all = all.concat(batch);
@@ -673,11 +689,12 @@ function walk(entry, out, depth) {
    the one being played. Then the album, and a line saying what was found - so "no captions" is never a
    mystery again. */
 function take(files) {
-  var pics = [], notesFiles = [];
+  var pics = [], notesFiles = [], charFiles = [];
   files.forEach(function (f) {
     var k = kindOf(f._path || f.webkitRelativePath || f.name);
     if (k === "picture") pics.push(f);
     else if (k === "notes") notesFiles.push(f);
+    else if (k === "character notes") charFiles.push(f);
   });
   notesFiles.sort(function (a, b) { return (b.lastModified || 0) - (a.lastModified || 0); });
   var say = document.getElementById("found");
@@ -687,6 +704,7 @@ function take(files) {
   line.push(notesFiles.length ? '<span class="ok">&#10003;</span> the addon\'s notes'
                               : '<span class="no">&#10007;</span> no notes here (drop the <code>_classic_beta_</code> folder to get them)');
   if (say) say.innerHTML = line.join(" &nbsp; ");
+  rememberPlace(pics, charFiles);              // after the line it adds to
   counting(false);
   // one paint of "building" before the work that would otherwise hold the page still
   var go = function () {
@@ -719,102 +737,149 @@ document.addEventListener("drop", function (e) {
   e.preventDefault();
   document.body.classList.remove("dropping");
   var items = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.items) || []);
-  // the folder's HANDLE, asked for now (a drop's items are gone once this event returns): it is what lets
-  // the page open the same folder next time without a drag (Chrome and Edge; elsewhere it is simply null)
-  var handles = items.map(function (it) {
-    try { return it.getAsFileSystemHandle ? it.getAsFileSystemHandle() : null; } catch (err) { return null; }
-  }).filter(Boolean);
   var entries = items.map(function (it) {
     return it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
   }).filter(Boolean);
   if (!entries.length) return;
   var out = [];
   counting(true);
-  Promise.all(entries.map(function (en) { return walk(en, out, 0); })).then(function () {
-    var r = take(out);
-    if (r.pictures && handles.length) {
-      Promise.all(handles.map(function (p) { return p.catch(function () { return null; }); })).then(function (hs) {
-        var dir = hs.filter(function (h) { return h && h.kind === "directory"; })[0];
-        if (dir) keepFolder(dir);
-      });
-    }
-  });
+  Promise.all(entries.map(function (en) { return walk(en, out, 0); })).then(function () { take(out); });
 });
 
-/* THE FOLDER, REMEMBERED (Arn, 21 Oct 2026: "once its dragged and dropped how can we save the setting like
-   click this button to make a icon on your desktop to open your album no need to drag and drop no more").
-   A DROPPED folder hands the page a handle it may keep (IndexedDB stores it whole); the next visit asks
-   the browser for read permission with one click, and with "Allow on every visit" the browser stops
-   asking and the album just opens. Chrome and Edge only - elsewhere the drop works as before and this
-   part never shows. (The folder PICKER refuses Program Files on a file:// page - measured 3 Oct - so it
-   is the drop that is remembered, not the button.) */
-var FOLDER_DB = "bism-album", FOLDER_STORE = "folder";
-function folderDb() {
-  return new Promise(function (ok, no) {
-    if (!window.indexedDB) return no(new Error("no IndexedDB"));
-    var r = indexedDB.open(FOLDER_DB, 1);
-    r.onupgradeneeded = function () { r.result.createObjectStore(FOLDER_STORE); };
-    r.onsuccess = function () { ok(r.result); };
-    r.onerror = function () { no(r.error); };
-  });
-}
-function folderDo(mode, fn) {
-  return folderDb().then(function (db) {
-    return new Promise(function (ok) {
-      var t = db.transaction(FOLDER_STORE, mode), req = fn(t.objectStore(FOLDER_STORE));
-      t.oncomplete = function () { ok(req && req.result); };
-      t.onerror = t.onabort = function () { ok(null); };
-    });
-  }).catch(function () { return null; });
-}
-function keepFolder(h) {
-  return folderDo("readwrite", function (s) { return s.put(h, "wow"); }).then(function () {
-    var say = document.getElementById("found");
-    if (say) say.innerHTML += ' &nbsp; <span class="ok">&#10003;</span> remembered for next time';
-    document.getElementById("icon").style.display = "";
-  });
-}
-function savedFolder() { return folderDo("readonly", function (s) { return s.get("wow"); }); }
-function forgetFolder() {
-  folderDo("readwrite", function (s) { return s.delete("wow"); });
-  document.getElementById("again-box").style.display = "none";
-  document.getElementById("drop-box").style.display = "";
-}
+/* THE ALBUM WITHOUT A DRAG (Arn, 21 Oct 2026: "once its dragged and dropped how can we save the setting ...
+   no need to drag and drop no more"). Chrome refuses a page every folder in Program Files - the picker, and a
+   dropped folder's handle too ("can't open this folder because it contains system files"). What it does not
+   refuse: a page opened from a file loading the files BESIDE it, by their relative paths, as an <img> or a
+   <script>. This page lives in <game>\Interface\AddOns\BiSMemories\Album, four folders under the game's,
+   so <game>\Screenshots and <game>\WTF are "../../../../Screenshots" and "../../../../WTF".
+     * the pictures: their names, remembered from the last drop, plus every one the notes name;
+     * the notes: the addon writes its per-character copy as ONE LINE OF TEXT (Core/Init.lua MirrorOut), which
+       is a line of JavaScript as much as of Lua - so it loads as a script and arrives as a string the same
+       reader reads. Which character folders hold one is what the drop taught (the account's own file is a Lua
+       table, which a browser cannot load).
+   So after one drag, opening the page IS the album, with the notes as of the last logout or /reload. A picture
+   taken by hand since the last drag shows after the next one; one since deleted simply does not show. */
+var PLACE = "bism-album-place-1";
 
-// the same walk as a drop's, over a kept handle
-async function walkHandle(h, path, depth, out) {
-  if (h.kind === "file") {
-    if (counted(path)) { var f = await h.getFile(); f._path = path; out.push(f); }
-    return;
-  }
-  if ((depth > 0 && !worthWalking(h.name, depth)) || depth > 7) return;
-  P.folders++;
-  for await (const child of h.values()) await walkHandle(child, path + "/" + child.name, depth + 1, out);
-}
-async function openSaved(h, ask) {
-  var mode = { mode: "read" };
-  var perm = await h.queryPermission(mode);
-  if (perm !== "granted" && ask) perm = await h.requestPermission(mode);
-  if (perm !== "granted") return false;
-  counting(true);
-  var out = [];
-  try { await walkHandle(h, "/" + h.name, 0, out); }
-  catch (err) { idle(); busy("the folder could not be read - drag it onto the page again"); return false; }
-  take(out);
-  return true;
+// "file:///C:/Program%20Files%20(x86)/World%20of%20Warcraft/_classic_beta_/Interface/AddOns/BiSMemories/Album/x.html"
+//   -> { parent: "C:\Program Files (x86)\World of Warcraft", ver: "_classic_beta_" }
+function whereAmI() {
+  if (location.protocol !== "file:") return null;
+  var path = decodeURIComponent(String(location.pathname));
+  var m = /^\/?(.*)\/([^\/]+)\/Interface\/AddOns\/[^\/]+\/Album\/[^\/]*$/i.exec(path);
+  if (!m) return null;
+  return { parent: m[1].replace(/\//g, "\\"), ver: m[2] };
 }
 (function () {
-  if (!window.FileSystemHandle) return;           // a browser without handles: the drop, as before
-  savedFolder().then(function (h) {
-    if (!h || !h.queryPermission) return;
-    document.getElementById("again-name").textContent = h.name;
-    document.getElementById("again-box").style.display = "";
-    document.getElementById("drop-box").style.display = "none";
-    document.getElementById("icon").style.display = "";
-    document.getElementById("open-saved").onclick = function () { openSaved(h, true); };
-    document.getElementById("forget-folder").onclick = forgetFolder;
-    openSaved(h, false);                          // "Allow on every visit": no click at all
+  var w = whereAmI();
+  if (!w) return;
+  document.getElementById("where-path").textContent = w.parent;
+  document.getElementById("where-ver").textContent = w.ver;
+  document.getElementById("where-steps").style.display = "";
+  document.getElementById("where-plain").style.display = "none";
+  document.getElementById("where-copy").onclick = function () {
+    var btn = this, done = function () { btn.textContent = "Copied"; setTimeout(function () { btn.textContent = "Copy"; }, 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(w.parent).then(done, function () { pick(); });
+    } else pick();
+    // no clipboard: the path selected, for Ctrl+C
+    function pick() {
+      var r = document.createRange();
+      r.selectNodeContents(document.getElementById("where-path"));
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      btn.textContent = "press Ctrl+C";
+    }
+  };
+})();
+function myVersion() {
+  // ".../World of Warcraft/_classic_beta_/Interface/AddOns/BiSMemories/Album/BiSMemories-Album.html"
+  var m = /\/([^\/]+)\/Interface\/AddOns\/[^\/]+\/Album\/[^\/]*$/i.exec(decodeURIComponent(String(location.pathname)));
+  return location.protocol === "file:" && m ? m[1] : null;
+}
+function fromGame(path) {
+  // "/World of Warcraft/_classic_beta_/WTF/Account/x/..." -> { ver: "_classic_beta_", rest: "WTF/Account/x/..." }
+  var parts = String(path || "").replace(/\\/g, "/").split("/").filter(Boolean), i;
+  for (i = 0; i < parts.length; i++) {
+    if (/^(WTF|Screenshots)$/i.test(parts[i])) return { ver: i > 0 ? parts[i - 1] : null, rest: parts.slice(i).join("/") };
+  }
+  return null;
+}
+function rememberPlace(pics, charFiles) {
+  var ver = myVersion();
+  if (!ver) return;
+  var chars = [];
+  charFiles.forEach(function (f) {
+    var g = fromGame(f._path || f.webkitRelativePath || "");
+    if (g && (!g.ver || g.ver === ver) && chars.indexOf(g.rest) < 0) chars.push(g.rest);
   });
+  var names = pics.filter(function (f) {
+    var g = fromGame(f._path || f.webkitRelativePath || "");
+    return !g || !g.ver || g.ver === ver;
+  }).map(function (f) { return f.name; });
+  if (!chars.length && !names.length) return;
+  try {
+    localStorage.setItem(PLACE, JSON.stringify({ ver: ver, chars: chars, pics: names, saved: Date.now() }));
+    var say = document.getElementById("found");
+    if (say) say.innerHTML += ' &nbsp; <span class="ok">&#10003;</span> next time it opens by itself';
+    document.getElementById("icon").style.display = "";
+  } catch (err) {}
+}
+function placeKept() {
+  try {
+    var got = JSON.parse(localStorage.getItem(PLACE) || "null");
+    return got && got.ver === myVersion() ? got : null;
+  } catch (err) { return null; }
+}
+function rel(path) {
+  return "../../../../" + String(path).split("/").map(encodeURIComponent).join("/");
+}
+// one script at a time: each one sets the same global, read before the next
+function loadCopies(list, done) {
+  var got = [];
+  (function next(i) {
+    if (i >= list.length) return done(got);
+    window.BiSMemoriesCharDB = undefined;
+    var sc = document.createElement("script");
+    sc.src = rel(list[i]);
+    sc.onload = function () {
+      if (typeof window.BiSMemoriesCharDB === "string") got.push(window.BiSMemoriesCharDB);
+      sc.remove(); next(i + 1);
+    };
+    sc.onerror = function () { sc.remove(); next(i + 1); };
+    document.head.appendChild(sc);
+  })(0);
+}
+function openKept(place) {
+  busy("opening your album");
+  loadCopies(place.chars || [], function (texts) {
+    // the newest copy: the character who logged out last wrote the whole account's notes
+    var best = null, bestAt = -1;
+    texts.forEach(function (t) {
+      var m = /\["stamp"\]=(\d+)/.exec(t), at = m ? parseInt(m[1], 10) : 0;
+      if (at > bestAt) { best = t; bestAt = at; }
+    });
+    if (best) { notes = readNotes(best); keptAt = bestAt * 1000; showKept(); }
+    var names = (place.pics || []).slice(), seen = {}, ext = ".jpg";
+    names.forEach(function (n) { seen[n.replace(/\.[a-z]+$/i, "")] = true; var e = /\.[a-z]+$/i.exec(n); if (e) ext = e[0]; });
+    Object.keys(notes).forEach(function (stem) { if (!seen[stem]) names.push(stem + ext); });
+    loadNames(names);
+    idle();
+    var kept = document.getElementById("kept");
+    kept.style.display = "";
+    kept.innerHTML = "Opened by itself" + (bestAt > 0 ? ", notes as of " + new Date(bestAt * 1000).toLocaleString() : "") +
+      ". Pictures you took by hand since your last drag show after the next one." +
+      '<span class="link" id="forget-place">forget</span>';
+    document.getElementById("forget-place").onclick = function () {
+      try { localStorage.removeItem(PLACE); } catch (err) {}
+      location.reload();
+    };
+  });
+}
+(function () {
+  var place = placeKept();
+  if (!place) return;
+  document.getElementById("icon").style.display = "";
+  openKept(place);
 })();
 
 /* THE DESKTOP ICON: an internet shortcut (.url) to this very page. Saved straight to the desktop where the

@@ -67,18 +67,63 @@ end
 
 local function has(t) return type(t) == "table" and next(t) ~= nil end
 
+--- THE COPY IS ONE LINE OF TEXT (21 Oct 2026). The album page sits inside the game folder and may load a file
+--- beside it as a SCRIPT - Chrome refuses it every folder picker in Program Files, but not that. A saved
+--- variable that is a STRING comes out as `BiSMemoriesCharDB = "..."`, which is a line of JavaScript as much
+--- as of Lua; a table would come out as Lua alone and stop the page. So the copy is the whole table written
+--- as Lua text on one line, read back here with loadstring (in an empty environment: data, never code), and
+--- by the page with the same reader it uses for the account file. No newline ever goes in it.
+local ESC = { ["\\"] = "\\\\", ['"'] = '\\"', ["\n"] = "\\n", ["\r"] = "\\r", ["\t"] = "\\t" }
+local function ser(v, out)
+  local t = type(v)
+  if t == "string" then
+    out[#out + 1] = '"' .. (v:gsub('[%c\\"]', function(c) return ESC[c] or "" end)) .. '"'
+  elseif t == "number" then
+    out[#out + 1] = (v == math.floor(v) and v < 1e15 and v > -1e15) and string.format("%d", v) or string.format("%.17g", v)
+  elseif t == "boolean" then
+    out[#out + 1] = v and "true" or "false"
+  elseif t == "table" then
+    out[#out + 1] = "{"
+    for k, x in pairs(v) do
+      local kt, xt = type(k), type(x)
+      if (kt == "string" or kt == "number") and (xt == "string" or xt == "number" or xt == "boolean" or xt == "table") then
+        out[#out + 1] = "["
+        ser(k, out)
+        out[#out + 1] = "]="
+        ser(x, out)
+        out[#out + 1] = ","
+      end
+    end
+    out[#out + 1] = "}"
+  else
+    out[#out + 1] = "nil"
+  end
+end
+function ns.Serialize(v)
+  local out = {}
+  ser(v, out)
+  return table.concat(out)
+end
+function ns.Deserialize(s)
+  if type(s) ~= "string" or s == "" or not loadstring then return nil end
+  local fn = loadstring("return " .. s)
+  if not fn then return nil end
+  if setfenv then setfenv(fn, {}) end
+  local ok, v = pcall(fn)
+  return ok and type(v) == "table" and v or nil
+end
+
 --- On the way out: everything, since this addon's table is small and all of it matters.
 function ns.MirrorOut()
-  BiSMemoriesCharDB = type(BiSMemoriesCharDB) == "table" and BiSMemoriesCharDB or {}
   if type(BiSMemoriesDB) ~= "table" then return end
-  for k in pairs(BiSMemoriesCharDB) do BiSMemoriesCharDB[k] = nil end
-  for k, v in pairs(BiSMemoriesDB) do BiSMemoriesCharDB[k] = copy(v) end
+  BiSMemoriesCharDB = ns.Serialize(BiSMemoriesDB)
 end
 
 --- At login: only when the account-wide table came back without a log and the per-character one
 --- has one. A client that keeps both never reaches this.
 function ns.MirrorIn()
   local acct, char = BiSMemoriesDB, BiSMemoriesCharDB
+  if type(char) == "string" then char = ns.Deserialize(char) end      -- since 21 Oct: one line of text
   -- WHERE YOU HAVE BEEN COMES HOME EITHER WAY. The rescue below is gated on the LOG - fair enough,
   -- the log is what a player would miss - and `zones` only ever came back as a passenger on it. A
   -- character who has not taken a photograph yet has no log to ride on, so their map was forgotten
@@ -127,7 +172,8 @@ f:SetScript("OnEvent", function(_, event, name)
     -- once the account-wide one comes back on Forever every time, the second copy can go.
     ns.dbSeen = {
       acct = type(BiSMemoriesDB) == "table" and BiSMemoriesDB.stamp or nil,
-      char = type(BiSMemoriesCharDB) == "table" and BiSMemoriesCharDB.stamp or nil,
+      char = (type(BiSMemoriesCharDB) == "table" and BiSMemoriesCharDB.stamp)
+             or (type(BiSMemoriesCharDB) == "string" and tonumber(BiSMemoriesCharDB:match('%["stamp"%]=(%d+)'))) or nil,
     }
     ns.rescued = ns.MirrorIn()                       -- before db(), so the log is there to find
     db()

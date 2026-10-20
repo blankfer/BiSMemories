@@ -674,10 +674,18 @@ do
   _G.BiSMemoriesDB = { log = { { at = 1, file = "WoWScrnShot_1", reason = "zone", detail = "Mulgore" } } }
   _G.BiSMemoriesCharDB = nil
   fire("PLAYER_LOGOUT")
-  H.ok(type(_G.BiSMemoriesCharDB) == "table" and _G.BiSMemoriesCharDB.log[1].detail == "Mulgore",
-       "logging out writes the per-character copy")
-  H.ok(not rawequal(_G.BiSMemoriesCharDB, _G.BiSMemoriesDB),
-       "and it is a SEPARATE table - an alias would be one file saved and one lost")
+  local back = NS.Deserialize(_G.BiSMemoriesCharDB)
+  H.ok(type(_G.BiSMemoriesCharDB) == "string" and back and back.log[1].detail == "Mulgore",
+       "logging out writes the per-character copy - as one line of text, read back whole")
+  H.ok(not _G.BiSMemoriesCharDB:find("[\n\r]"), "and never a newline in it: the album page loads it as a script")
+  -- the page's reader on it: a note it can find, the same keys as the account file
+  H.ok(_G.BiSMemoriesCharDB:find('["file"]="WoWScrnShot_1"', 1, true), "with the notes as the page reads them")
+  -- the awkward strings survive the trip: quotes, backslashes, a newline in a note
+  local odd = { log = { { detail = 'He said "hi"\nC:\\WoW', at = 7, n = 0.5, yes = true } } }
+  local again = NS.Deserialize(NS.Serialize(odd))
+  H.ok(again and again.log[1].detail == odd.log[1].detail and again.log[1].n == 0.5 and again.log[1].yes == true,
+       "quotes, backslashes and newlines go there and back")
+  H.eq(NS.Deserialize('os.exit()'), nil, "and the copy is read as data, never run as code")
 
   local kept = _G.BiSMemoriesCharDB
   _G.BiSMemoriesDB = nil                      -- the client loses the account-wide one
@@ -800,8 +808,12 @@ do
   -- "i thought that it froze" / "click this button to make a icon on your desktop" (Arn, 21 Oct 2026)
   H.ok(page and page:find("function counting(", 1, true) and page:find('id="busy"', 1, true),
        "a bar that moves while the folder is read, with what it has found so far")
-  H.ok(page and page:find("getAsFileSystemHandle", 1, true) and page:find("indexedDB", 1, true)
-       and page:find("Open my album", 1, true), "the dropped folder is remembered: next time one button")
+  -- Chrome refused a dropped Program Files folder's handle ("contains system files") AND emptied the drop
+  -- (Arn's screenshot, 21 Oct): no handles; the page opens what lies beside it, by relative path
+  H.ok(page and not page:find("getAsFileSystemHandle", 1, true) and page:find("function openKept(", 1, true)
+       and page:find('"../../../../"', 1, true), "after one drag the page opens the album by itself, from beside it")
+  H.ok(page and page:find("function whereAmI(", 1, true) and page:find("where-copy", 1, true),
+       "and it says where the game folder is, with a Copy button")
   H.ok(page and page:find("[InternetShortcut]", 1, true) and page:find("Make a desktop icon", 1, true),
        "and a desktop icon that opens the album")
 
