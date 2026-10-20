@@ -130,7 +130,7 @@ function M.SummaryLines(s)
   end
   if s.places > 0 then out[#out + 1] = ("%d new place%s"):format(s.places, s.places == 1 and "" or "s") end
   if #s.firsts > 0 then out[#out + 1] = "firsts: " .. table.concat(s.firsts, ", ") end
-  if s.deaths > 0 then out[#out + 1] = ("%d death%s worth keeping"):format(s.deaths, s.deaths == 1 and "" or "s") end
+  if s.deaths > 0 then out[#out + 1] = ("%d death%s"):format(s.deaths, s.deaths == 1 and "" or "s") end
   if s.gamba then out[#out + 1] = "at the gamba table: " .. s.gamba end
   return out
 end
