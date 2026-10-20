@@ -11,13 +11,13 @@
   and it works with no internet connection at all - every picture stays on your own machine and
   is read straight off your disk by the browser.
 
-  WHY IT ASKS YOU TO PICK THE FOLDER. A web page cannot go looking through your hard drive; that
-  would be a security hole the size of a house. So you point it at your Screenshots folder once,
-  and the browser hands the page that folder and nothing else.
-
-  THE NOTES ARE OPTIONAL. The addon writes down what each picture WAS - the zone, your level, why
-  it was taken - into its saved variables file. Hand that file over too and every picture gets its
-  story. Without it you still get the album, just without the captions.
+  ONE STEP (Arn, 21 Oct 2026: "make it easy like the google notebook thing we did for the logs" -
+  he had loaded 1152 pictures and could not find where the notes went). You hand the page your WoW
+  folder - dragged on, or picked with the one button - and it finds both halves itself: the pictures
+  in Screenshots, the notes in WTF\Account\<ACCOUNT>\SavedVariables\BiSMemories.lua (the newest,
+  when there are several accounts). It looks in those two places only and never walks the rest of
+  the game, so a 60 GB install is read in a moment. Any of these works: World of Warcraft, the
+  _classic_beta_ folder in it, Screenshots alone, WTF alone, or the .lua file itself.
 -->
 <style>
   :root {
@@ -69,10 +69,13 @@
   #box img { max-width: 94vw; max-height: 82vh; object-fit: contain; }
   #box .bar { color: var(--muted); padding: 12px 16px; text-align: center; font-size: 14px; }
   #box .bar b { color: var(--ink); font-weight: 600; }
-  #box .nav { position: absolute; top: 0; bottom: 0; width: 22%; cursor: pointer; }
+  /* the side strips start below the X: they used to cover it, so the X stepped to the next picture
+     instead of closing (Arn, 21 Oct 2026) */
+  #box .nav { position: absolute; top: 70px; bottom: 0; width: 22%; cursor: pointer; z-index: 1; }
   #box .nav.prev { left: 0; } #box .nav.next { right: 0; }
-  #box .x { position: absolute; top: 14px; right: 18px; color: var(--muted); cursor: pointer;
-            font-size: 26px; line-height: 1; }
+  #box .x { position: absolute; top: 10px; right: 14px; color: var(--ink); cursor: pointer; z-index: 2;
+            font-size: 30px; line-height: 1; padding: 6px 12px; border-radius: 6px; background: rgba(255,255,255,.08); }
+  #box .x:hover { background: rgba(255,255,255,.18); }
   #box .x:hover { color: var(--ink); }
 
   /* FINDING ONE PICTURE AMONG HUNDREDS. 330 shots and 58 notes with nothing but scrolling was the
@@ -100,8 +103,19 @@
                  border-radius: 6px; padding: 6px 9px; }
   .year { color: var(--muted); font-size: 13px; margin-top: 10px; }
   .year b { color: var(--ink); font-weight: 600; }
+  .drop { margin: 6px 0 0; padding: 26px 22px; border: 2px dashed #4a4458; border-radius: 12px;
+          max-width: 760px; background: #1b1820; }
+  .drop h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; color: var(--ink); }
+  .drop p { margin: 6px 0; color: var(--muted); }
+  .drop code { color: var(--ink); background: var(--card); padding: 2px 6px; border-radius: 4px; }
+  .drop .btn { margin-top: 10px; border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .found { margin-top: 12px; color: var(--muted); font-size: 14px; }
+  .found b { color: var(--ink); }
+  .found .ok { color: #7fd18b; } .found .no { color: #e8a06b; }
+  .small { font-size: 13px; color: var(--muted); }
+  .small summary { cursor: pointer; }
   /* the whole page is a drop target, because the button is unavoidable and dragging is kinder */
-  body.dropping::after { content: "Drop your Screenshots folder"; position: fixed; inset: 0;
+  body.dropping::after { content: "Drop it - the page finds your pictures and notes"; position: fixed; inset: 0;
                          display: flex; align-items: center; justify-content: center;
                          background: rgba(20,18,26,.88); color: var(--accent); font-size: 22px;
                          border: 3px dashed var(--accent); z-index: 80; pointer-events: none; }
@@ -112,16 +126,12 @@
 <header>
   <h1>BiS<span>&gt;</span> Memories &mdash; your album</h1>
   <p class="lede">
-    Point this at your <b>Screenshots</b> folder and it becomes an album you can click through.
-    Everything happens inside your browser: nothing is uploaded, nothing is installed, and it
-    works offline. Add the addon's saved file too and each picture gets its story.
+    Every picture BiS Memories took, with what it was: the boss, the level, who was there.
+    It all happens inside your browser &mdash; nothing is uploaded, nothing is installed.
   </p>
-  <div class="controls">
-    <label class="btn">Choose your Screenshots folder
-      <input type="file" id="pics" webkitdirectory directory multiple>
-    </label>
-    <label class="btn">Add the addon's notes (optional)
-      <input type="file" id="notes" accept=".lua,.txt">
+  <div class="controls" id="controls" style="display:none">
+    <label class="btn">Load again
+      <input type="file" id="again" webkitdirectory directory multiple>
     </label>
     <span class="count" id="count"></span>
     <div class="kept" id="kept" style="display:none"></div>
@@ -137,36 +147,27 @@
 
 <main>
   <div class="empty" id="empty">
-    <p><b>Nothing loaded yet.</b> Click <i>Choose your Screenshots folder</i> above, or drag the
-       folder onto this page.</p>
-
-    <p><b>1. The pictures</b> &mdash; your Screenshots folder:</p>
-    <p><code>C:\Program Files (x86)\World of Warcraft\_classic_beta_\Screenshots</code></p>
-    <p style="color:var(--muted)">Replace <code>_classic_beta_</code> with whichever you play:
-       <code>_classic_era_</code>, <code>_classic_</code>, <code>_retail_</code>. If you installed
-       WoW somewhere else, it is the <code>Screenshots</code> folder beside that
-       <code>WTF</code> one.</p>
-
-    <p id="step-notes"><b>2. The captions</b> &mdash; the addon's saved file. <b>This one is NOT in
-       your AddOns folder.</b> It lives in <code>WTF</code>, which is where WoW keeps everything it
-       remembers about you:</p>
-    <p><code>C:\Program Files (x86)\World of Warcraft\_classic_beta_\WTF\Account\&lt;ACCOUNT&gt;\SavedVariables\BiSMemories.lua</code></p>
-    <p style="color:var(--muted)">
-       <b>&lt;ACCOUNT&gt;</b> is whatever WoW called your account folder &mdash; a number and a
-       hash like <code>213614#1</code>, or a name like <code>ARNOLD891</code>. It is never your
-       email.<br>
-       <b>There may be more than one</b>, and the extra ones are often nearly empty. People with
-       several accounts have several folders, and anyone who plays two at once certainly does.
-       <b>Open each until you find the one that actually contains
-       <code>SavedVariables\BiSMemories.lua</code></b> &mdash; that is yours. If more than one has
-       it, take the one changed most recently.<br>
-       There is a second copy under your realm and character
-       (<code>&hellip;\Account\&lt;ACCOUNT&gt;\&lt;Realm&gt;\&lt;Character&gt;\SavedVariables\</code>) and
-       either works &mdash; the one above is simplest because it holds every character.</p>
-
-    <p style="color:var(--muted)">Your browser may ask permission to read the folder. That is the
-       browser protecting you, not this page asking for anything &mdash; say yes and the pictures
-       are read from disk and shown. They never leave your machine.</p>
+    <div class="drop">
+      <h2>Drag your WoW folder onto this page</h2>
+      <p>Open <code>C:\Program Files (x86)\World of Warcraft</code> in File Explorer and drag the
+         <code>_classic_beta_</code> folder here. That is all: the page finds your pictures and the
+         addon's notes inside it by itself.</p>
+      <label class="btn">or pick the folder
+        <input type="file" id="pics" webkitdirectory directory multiple>
+      </label>
+      <div class="found" id="found"></div>
+    </div>
+    <details class="small" style="margin-top:18px;max-width:760px">
+      <summary>WoW is somewhere else, or it does not work?</summary>
+      <p>It is the folder with <code>Screenshots</code> and <code>WTF</code> in it &mdash; on another drive
+         it might be <code>D:\Games\World of Warcraft\_classic_beta_</code>. You can also drop the
+         <code>Screenshots</code> folder and the notes file separately; the notes are
+         <code>WTF\Account\(your account)\SavedVariables\BiSMemories.lua</code>.</p>
+      <p>Picking with the button, Chrome may say it will "upload" files: it means hand them to this page.
+         Nothing leaves your computer &mdash; this page works with the internet unplugged.</p>
+      <p>Captions appear after you log out or <code>/reload</code> in game &mdash; that is when WoW writes
+         the notes down.</p>
+    </details>
   </div>
   <div id="album"></div>
 </main>
@@ -286,6 +287,15 @@ function entryAround(text, idx) {
   return null;
 }
 
+// who was there: ["with"] = { "Chain Healz", "Neg Crotic", } - the names, in order
+function withOf(block) {
+  var m = /\["with"\]\s*=\s*\{([^}]*)\}/.exec(block);
+  if (!m) return [];
+  var out = [], re = /"([^"]*)"/g, n;
+  while ((n = re.exec(m[1])) !== null) out.push(n[1]);
+  return out;
+}
+
 function readNotes(text) {
   var out = {}, get, re, m, block;
   get = function (b, key) {
@@ -300,7 +310,8 @@ function readNotes(text) {
     if (!block) continue;
     out[m[1].replace(/\.[a-z]+$/i, "")] = {
       zone: get(block, "zone"), detail: get(block, "detail"),
-      reason: get(block, "reason"), level: get(block, "level"), char: get(block, "char")
+      reason: get(block, "reason"), level: get(block, "level"), char: get(block, "char"),
+      with: withOf(block)
     };
   }
   return out;
@@ -312,6 +323,7 @@ function readNotes(text) {
 function haystack(s) {
   var n = s.note || {};
   return [s.name, clock(s.at) || "", n.reason || "", word(n.reason), n.char || "", n.zone || "", n.level ? "level " + n.level : "",
+          (n.with || []).join(" "),
           pretty(n.detail || "").replace(/<[^>]*>/g, "")].join(" ").toLowerCase();
 }
 
@@ -390,10 +402,12 @@ function render() {
   album.innerHTML = "";
   if (!shots.length) {
     empty.style.display = ""; count.textContent = "";
+    document.getElementById("controls").style.display = "none";
     document.getElementById("find").style.display = "none";
     return;
   }
   empty.style.display = "none";
+  document.getElementById("controls").style.display = "";
   document.getElementById("find").style.display = "";
   tally();
   people();
@@ -485,6 +499,7 @@ function open(i) {
   document.getElementById("bar").innerHTML = s.note
     ? "<b>" + pretty(s.note.detail || s.note.reason || "") + "</b> &middot; " +
       esc(s.note.zone || "") + (s.note.level ? " &middot; level " + esc(s.note.level) : "") +
+      (s.note.with && s.note.with.length ? " &middot; with " + esc(s.note.with.join(", ")) : "") +
       " &middot; " + esc(s.name)
     : "<b>" + esc(s.name) + "</b>";
   document.getElementById("box").classList.add("on");
@@ -536,21 +551,51 @@ function loadFiles(files) {
   render();
 }
 
-document.getElementById("pics").addEventListener("change", function (e) {
-  loadFiles(Array.prototype.slice.call(e.target.files || []));
-});
+/* WHAT TO KEEP OUT OF WHAT WAS HANDED OVER. A path is "World of Warcraft/_classic_beta_/Screenshots/x.jpg"
+   or "_classic_beta_/WTF/Account/123#1/SavedVariables/BiSMemories.lua" or just "x.jpg": a picture is any
+   jpg/png/tga that is not inside Interface (addon art), the notes are BiSMemories.lua in an account's own
+   SavedVariables (not a character's copy, which is older and partial). Pure, so it can be asked questions. */
+var IMAGE = /\.(jpe?g|png|tga)$/i;
+function kindOf(path) {
+  var p = String(path || "").replace(/\\/g, "/");
+  var parts = p.split("/"), name = parts[parts.length - 1];
+  if (/^BiSMemories\.lua$/i.test(name)) {
+    // .../Account/<ACCOUNT>/SavedVariables/BiSMemories.lua - the account's; deeper is a character's copy
+    var i = parts.length - 2;
+    if (/^SavedVariables$/i.test(parts[i] || "") && /^Account$/i.test(parts[i - 2] || "")) return "notes";
+    if (parts.length === 1) return "notes";            // the file itself, dropped or picked alone
+    return "character notes";
+  }
+  if (IMAGE.test(name) && !/(^|\/)(Interface|Cache|Fonts|Data|Utils)\//i.test(p)) return "picture";
+  return null;
+}
 
-// a dropped directory arrives as an entry tree, not a file list, so it is walked
-function walk(entry, out) {
+/* THE WALK ONLY GOES WHERE THE HALVES CAN BE. A dropped World of Warcraft folder holds tens of thousands of
+   files (Data alone is gigabytes); walking all of it would take minutes for nothing. So: into a folder
+   named like a game version (_classic_beta_), Screenshots, WTF, Account, an account's own folder and
+   SavedVariables - and into anything at the very top, in case the folder dropped is something else. */
+var SKIP = /^(Interface|Data|Cache|Logs|Errors|Fonts|Utils|WTF-backup|Battle\.net|BlizzardBrowser)$/i;
+function worthWalking(name, depth) {
+  if (SKIP.test(name)) return false;
+  return depth <= 1 || /^_.*_$/.test(name) || /^(Screenshots|WTF|Account|SavedVariables)$/i.test(name)
+         || /#\d+$|^\d+#|^[A-Z0-9]+$/.test(name);
+}
+
+// a dropped directory arrives as an entry tree, not a file list, so it is walked - only where it is worth it
+function walk(entry, out, depth) {
+  depth = depth || 0;
   return new Promise(function (done) {
     if (!entry) return done();
-    if (entry.isFile) return entry.file(function (f) { out.push(f); done(); }, done);
-    if (!entry.isDirectory) return done();
+    if (entry.isFile) {
+      if (!kindOf(entry.fullPath || entry.name)) return done();
+      return entry.file(function (f) { f._path = entry.fullPath || f.name; out.push(f); done(); }, done);
+    }
+    if (!entry.isDirectory || (depth > 0 && !worthWalking(entry.name, depth)) || depth > 7) return done();
     var reader = entry.createReader(), all = [];
     (function more() {
       reader.readEntries(function (batch) {
         if (!batch.length) {
-          Promise.all(all.map(function (e) { return walk(e, out); })).then(function () { done(); });
+          Promise.all(all.map(function (e) { return walk(e, out, depth + 1); })).then(function () { done(); });
           return;
         }
         all = all.concat(batch);
@@ -559,6 +604,34 @@ function walk(entry, out) {
     })();
   });
 }
+
+/* Everything handed over, sorted into the two halves. Several accounts with notes: the newest file is
+   the one being played. Then the album, and a line saying what was found - so "no captions" is never a
+   mystery again. */
+function take(files) {
+  var pics = [], notesFiles = [];
+  files.forEach(function (f) {
+    var k = kindOf(f._path || f.webkitRelativePath || f.name);
+    if (k === "picture") pics.push(f);
+    else if (k === "notes") notesFiles.push(f);
+  });
+  notesFiles.sort(function (a, b) { return (b.lastModified || 0) - (a.lastModified || 0); });
+  var say = document.getElementById("found");
+  var line = [];
+  line.push(pics.length ? '<span class="ok">&#10003;</span> <b>' + pics.length + "</b> pictures"
+                        : '<span class="no">&#10007;</span> no pictures here');
+  line.push(notesFiles.length ? '<span class="ok">&#10003;</span> the addon\'s notes'
+                              : '<span class="no">&#10007;</span> no notes here (drop the <code>_classic_beta_</code> folder to get them)');
+  if (say) say.innerHTML = line.join(" &nbsp; ");
+  var go = function () { if (pics.length) loadFiles(pics); };
+  if (notesFiles.length) readNotesFile(notesFiles[0], go); else go();
+  return { pictures: pics.length, notes: notesFiles.length };
+}
+
+["pics", "again"].forEach(function (id) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener("change", function (e) { take(Array.prototype.slice.call(e.target.files || [])); });
+});
 
 document.addEventListener("dragover", function (e) {
   e.preventDefault();
@@ -576,13 +649,9 @@ document.addEventListener("drop", function (e) {
   }).filter(Boolean);
   if (!entries.length) return;
   var out = [];
-  Promise.all(entries.map(function (en) { return walk(en, out); })).then(function () {
-    // a dropped .lua is the notes file, not a picture
-    var lua = out.filter(function (f) { return /\.lua$/i.test(f.name); })[0];
-    if (lua) readNotesFile(lua);
-    var pics = out.filter(function (f) { return /\.(jpe?g|png|tga)$/i.test(f.name); });
-    if (pics.length) loadFiles(pics);
-  });
+  var say = document.getElementById("found");
+  if (say) say.textContent = "looking for your pictures and notes...";
+  Promise.all(entries.map(function (en) { return walk(en, out, 0); })).then(function () { take(out); });
 });
 
 /* REMEMBERING THE NOTES BETWEEN VISITS (3 Oct 2026).
@@ -643,21 +712,16 @@ function showKept() {
   document.getElementById("forget").onclick = forget;
 }
 
-function readNotesFile(f) {
+function readNotesFile(f, then) {
   var r = new FileReader();
   r.onload = function () {
     notes = readNotes(String(r.result || ""));
     shots.forEach(function (s) { s.note = notes[s.name.replace(/\.[a-z]+$/i, "")] || null; });
     remember(notes);
-    render();
+    if (then) then(); else render();
   };
   r.readAsText(f);
 }
-
-document.getElementById("notes").addEventListener("change", function (e) {
-  var f = (e.target.files || [])[0];
-  if (f) readNotesFile(f);
-});
 
 // Last visit's notes, before anything is picked. The pictures load later and take their captions
 // from `notes` as they go (loadFiles), so there is nothing to re-attach here.
@@ -667,12 +731,6 @@ document.getElementById("notes").addEventListener("change", function (e) {
   notes = got.notes;
   keptAt = got.saved || null;
   showKept();
-  var second = document.getElementById("step-notes");
-  if (second) {
-    second.innerHTML = "<b>2. The captions</b> &mdash; <b>already here.</b> This browser kept them " +
-      "from last time, so you only need the Screenshots folder above. Load the file again when you " +
-      "want the newer ones &mdash; it is still in <code>WTF</code>, not in your AddOns folder:";
-  }
 })();
 </script>
 </body>

@@ -788,6 +788,15 @@ do
   H.ok(page and page:find("http", 1, true) == nil or not page:find("src=\"http", 1, true),
        "nothing is fetched from the internet: it must work offline")
   H.ok(bytes(HERE .. "/../Album/README.txt") ~= nil, "with the instructions beside it")
+  -- ONE STEP (Arn, 21 Oct 2026: "make it easy like the google notebook thing"): hand it the WoW folder and it
+  -- finds both halves; it walks only where they can be (never Data or Interface); the X closes (the side
+  -- strips used to cover it). The logic itself was run in a browser on the day it was written.
+  H.ok(page and page:find("function kindOf(", 1, true) and page:find("function worthWalking(", 1, true)
+       and page:find("function take(", 1, true), "one step: the page finds the pictures and the notes itself")
+  H.ok(page and page:find("^(Interface|Data|Cache|Logs", 1, true), "and never walks Data or Interface")
+  H.ok(page and page:find("Drag your WoW folder onto this page", 1, true)
+       and not page:find("Add the addon's notes (optional)", 1, true), "one instruction, not two buttons and an essay")
+  H.ok(page and page:find("top: 70px", 1, true) and page:find("z-index: 2", 1, true), "the lightbox's X sits above the side strips")
 
   -- THE ACCOUNT FOLDER IS NOT ALWAYS ONE (4 Oct 2026). The page said `<ACCOUNT>` is "a number and
   -- a hash" and that there is "usually only one folder" - and both were wrong on the author's own
