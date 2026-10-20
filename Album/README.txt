@@ -10,9 +10,13 @@ HOW TO USE IT
 
 1. Double-click  BiSMemories-Album.html  in this folder. It opens in your browser.
 
-2. Press Windows key + E for File Explorer, open  C:\Program Files (x86)\World of Warcraft
-   (the page shows the exact path, with a Copy button) and drag the  _classic_beta_  folder onto
-   the page. Drag it from File Explorer - a link dragged from a browser tab carries no files.
+2. Click "Choose your WoW folder" and pick  _classic_beta_  in
+   C:\Program Files (x86)\World of Warcraft  (the page shows the exact path, with a Copy button -
+   paste it into the address bar of the window that opens).
+
+3. Your browser asks to "upload" thousands of files. Say yes: it only means handing them to this
+   page - nothing leaves your computer. You do this ONCE; after that the page opens your album
+   by itself.
 
 That is all. The page finds your pictures (in Screenshots) and the addon's notes (in WTF) by
 itself, and says what it found. If there is more than one account folder in WTF, it takes the

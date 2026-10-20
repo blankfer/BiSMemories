@@ -109,6 +109,8 @@
   .drop p { margin: 6px 0; color: var(--muted); }
   .drop code { color: var(--ink); background: var(--card); padding: 2px 6px; border-radius: 4px; }
   .drop .btn { margin-top: 10px; border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .drop .btn.pick { font-size: 16px; padding: 11px 20px; color: #14121a; background: var(--accent); }
+  .drop .btn.pick:hover { filter: brightness(1.08); }
   .found { margin-top: 12px; color: var(--muted); font-size: 14px; }
   .found b { color: var(--ink); }
   .found .ok { color: #7fd18b; } .found .no { color: #e8a06b; }
@@ -168,21 +170,29 @@
 <main>
   <div class="empty" id="empty">
     <div class="drop" id="drop-box">
-      <h2>Drag your WoW folder onto this page</h2>
-      <!-- THE PAGE KNOWS WHERE IT IS (Arn, 21 Oct 2026: "once we open the album does it not know where its at
-           ... i am ...\_classic_beta_\Interface\AddOns\BiSMemories\Album and i need to get from here
-           ...\_classic_beta_"): opened from the game's folder, it reads its own address and gives the exact
-           folder to open, with a Copy button. Opened from anywhere else, the general words stay. -->
+      <h2>Open your album &mdash; once</h2>
+      <!-- THE BUTTON FIRST (Arn, 21 Oct 2026): a dragged folder stopped working on this page in Chrome AND Edge
+           (EncodingError listing it - even one screenshot from Pictures), though the same drag worked that
+           morning. The picker always works. It is needed ONCE: after it the page remembers where the pictures
+           and notes are and opens the album by itself (THE ALBUM WITHOUT A DRAG). So the picker leads, with
+           Chrome's "upload" box explained beside it; dragging stays as the other way.
+           THE PAGE KNOWS WHERE IT IS (Arn: "once we open the album does it not know where its at"): opened from
+           the game's folder it reads its own address and gives the exact folder, with a Copy button. -->
       <div id="where-steps" style="display:none">
         <p><b>1.</b> Copy where your game is:</p>
         <p class="pathrow"><code id="where-path"></code><button class="btn" id="where-copy" type="button">Copy</button></p>
-        <p><b>2.</b> Press the <b>Windows key + E</b> to open File Explorer (the yellow folder window &mdash;
-           not a browser tab). Click its address bar at the top, paste, and press Enter.</p>
-        <p><b>3.</b> Drag the <code id="where-ver"></code> folder you see there onto this page.</p>
+        <p><b>2.</b> Click <b>Choose your WoW folder</b> below. In the window that opens, paste into its address
+           bar at the top and press Enter, then click the <code id="where-ver"></code> folder once and press
+           <b>Upload</b>.</p>
       </div>
-      <p id="where-plain">Open <code>C:\Program Files (x86)\World of Warcraft</code> in File Explorer and drag the
-         <code>_classic_beta_</code> folder here. That is all: the page finds your pictures and the
-         addon's notes inside it by itself.</p>
+      <p id="where-plain">Click <b>Choose your WoW folder</b> and pick the folder with <code>Screenshots</code> and
+         <code>WTF</code> in it &mdash; usually <code>C:\Program Files (x86)\World of Warcraft\_classic_beta_</code>.</p>
+      <p><label class="btn pick">Choose your WoW folder
+         <input type="file" id="pics" webkitdirectory directory multiple></label></p>
+      <p class="small"><b>3.</b> Your browser then asks to "upload" thousands of files. Say yes: that is its word for
+         handing them to this page &mdash; nothing leaves your computer, and this page works with the internet
+         unplugged. <b>You do this once.</b> From then on the page opens your album by itself.</p>
+      <p class="small">Or drag the folder onto this page from File Explorer, if your browser allows it.</p>
       <div class="found" id="found"></div>
     </div>
     <details class="small" style="margin-top:18px;max-width:760px">
@@ -191,12 +201,6 @@
          it might be <code>D:\Games\World of Warcraft\_classic_beta_</code>. You can also drop the
          <code>Screenshots</code> folder and the notes file separately; the notes are
          <code>WTF\Account\(your account)\SavedVariables\BiSMemories.lua</code>.</p>
-      <!-- THE PICKER IS THE FALLBACK (Arn, 21 Oct 2026: Chrome's "Upload 21,700 files to this site?" - the picker
-           hands over every file in the folder, AddOns and all; a drag never asks and is read selectively) -->
-      <p>Cannot drag? Pick the folder instead:
-         <label class="btn">pick the folder <input type="file" id="pics" webkitdirectory directory multiple></label></p>
-      <p>Chrome will then ask to "upload" thousands of files. That is its word for handing them to this page &mdash;
-         nothing leaves your computer, and this page works with the internet unplugged. Dragging never asks.</p>
       <p>Captions appear after you log out or <code>/reload</code> in game &mdash; that is when WoW writes
          the notes down.</p>
     </details>
@@ -723,7 +727,8 @@ function take(files) {
               (P.folders === 1 ? "" : "s") + ", " + P.files + " file" + (P.files === 1 ? "" : "s") +
               (P.failed ? ", <b>" + P.failed + " the browser would not let it read</b>" : "") +
               (P.err ? ". The browser would not open <b>" + esc(P.errAt) + "</b>: " + esc(P.err) : "") +
-              ". Drop the <code>_classic_beta_</code> folder itself, from File Explorer.");
+              (P.err ? ". Your browser will not read a dragged folder here &mdash; use <b>Choose your WoW folder</b> instead."
+                     : ". Drop the <code>_classic_beta_</code> folder itself, from File Explorer."));
   }
   if (say) say.innerHTML = line.join(" &nbsp; ");
   rememberPlace(pics, charFiles);              // after the line it adds to

@@ -802,8 +802,9 @@ do
   H.ok(page and page:find("function kindOf(", 1, true) and page:find("function worthWalking(", 1, true)
        and page:find("function take(", 1, true), "one step: the page finds the pictures and the notes itself")
   H.ok(page and page:find("^(Interface|Data|Cache|Logs", 1, true), "and never walks Data or Interface")
-  H.ok(page and page:find("Drag your WoW folder onto this page", 1, true)
-       and not page:find("Add the addon's notes (optional)", 1, true), "one instruction, not two buttons and an essay")
+  -- the picker leads (21 Oct 2026: a dragged folder stopped working on this page in Chrome and Edge alike)
+  H.ok(page and page:find("Choose your WoW folder", 1, true) and page:find("You do this once.", 1, true)
+       and not page:find("Add the addon's notes (optional)", 1, true), "one button, used once, and the upload box explained")
   H.ok(page and page:find("top: 70px", 1, true) and page:find("z-index: 2", 1, true), "the lightbox's X sits above the side strips")
   -- "i thought that it froze" / "click this button to make a icon on your desktop" (Arn, 21 Oct 2026)
   H.ok(page and page:find("function counting(", 1, true) and page:find('id="busy"', 1, true),
