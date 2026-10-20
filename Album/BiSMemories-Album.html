@@ -123,6 +123,7 @@
   @keyframes slide { 0% { left: -30%; } 100% { left: 100%; } }
   .busy .what { color: var(--muted); font-size: 13px; margin-top: 6px; }
   .busy .what b { color: var(--ink); }
+  .busy .no { color: #e8a06b; } .busy .ok { color: #7fd18b; }
   .link { color: var(--muted); cursor: pointer; text-decoration: underline; font-size: 13px; margin-left: 8px; }
   .link:hover { color: var(--ink); }
   .small summary { cursor: pointer; }
@@ -173,7 +174,8 @@
       <div id="where-steps" style="display:none">
         <p><b>1.</b> Copy where your game is:
            <code id="where-path"></code> <button class="btn" id="where-copy" type="button">Copy</button></p>
-        <p><b>2.</b> In File Explorer, click the address bar at the top, paste, and press Enter.</p>
+        <p><b>2.</b> Press the <b>Windows key + E</b> to open File Explorer (the yellow folder window &mdash;
+           not a browser tab). Click its address bar at the top, paste, and press Enter.</p>
         <p><b>3.</b> Drag the <code id="where-ver"></code> folder you see there onto this page.</p>
       </div>
       <p id="where-plain">Open <code>C:\Program Files (x86)\World of Warcraft</code> in File Explorer and drag the
@@ -740,7 +742,16 @@ document.addEventListener("drop", function (e) {
   var entries = items.map(function (it) {
     return it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
   }).filter(Boolean);
-  if (!entries.length) return;
+  if (!entries.length) {
+    // A LINK, NOT A FOLDER (Arn, 21 Oct 2026: he pasted the path into a Chrome tab, got Chrome's "Index of"
+    // listing, and dragged _classic_beta_ from THAT - an address, with nothing in it). Say so, instead of
+    // the silence that looks like a broken page.
+    busy('<span class="no">&#10007;</span> that was a <b>link</b> from a browser tab, not the folder itself. ' +
+         'Press <b>Windows key + E</b> for File Explorer, paste the path in its address bar, ' +
+         'and drag the folder from that window.');
+    document.getElementById("track").className = "track done";
+    return;
+  }
   var out = [];
   counting(true);
   Promise.all(entries.map(function (en) { return walk(en, out, 0); })).then(function () { take(out); });
