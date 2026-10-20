@@ -127,6 +127,8 @@
   .link { color: var(--muted); cursor: pointer; text-decoration: underline; font-size: 13px; margin-left: 8px; }
   .link:hover { color: var(--ink); }
   .small summary { cursor: pointer; }
+  .pathrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .pathrow code { white-space: nowrap; padding: 7px 10px !important; font-size: 14px; }
   /* the whole page is a drop target, because the button is unavoidable and dragging is kinder */
   body.dropping::after { content: "Drop it - the page finds your pictures and notes"; position: fixed; inset: 0;
                          display: flex; align-items: center; justify-content: center;
@@ -172,8 +174,8 @@
            ...\_classic_beta_"): opened from the game's folder, it reads its own address and gives the exact
            folder to open, with a Copy button. Opened from anywhere else, the general words stay. -->
       <div id="where-steps" style="display:none">
-        <p><b>1.</b> Copy where your game is:
-           <code id="where-path"></code> <button class="btn" id="where-copy" type="button">Copy</button></p>
+        <p><b>1.</b> Copy where your game is:</p>
+        <p class="pathrow"><code id="where-path"></code><button class="btn" id="where-copy" type="button">Copy</button></p>
         <p><b>2.</b> Press the <b>Windows key + E</b> to open File Explorer (the yellow folder window &mdash;
            not a browser tab). Click its address bar at the top, paste, and press Enter.</p>
         <p><b>3.</b> Drag the <code id="where-ver"></code> folder you see there onto this page.</p>
@@ -631,7 +633,7 @@ function worthWalking(name, depth) {
 
 /* THE BAR. `P` counts while the folder is read; a timer paints it a few times a second, so a thousand
    pictures found cost a thousand additions, not a thousand repaints. */
-var P = { folders: 0, pictures: 0, notes: 0, timer: null };
+var P = { folders: 0, pictures: 0, notes: 0, files: 0, timer: null, dropped: null };
 function busy(text) {
   var box = document.getElementById("busy");
   document.getElementById("track").className = "track";
@@ -641,7 +643,7 @@ function busy(text) {
 function counting(on) {
   if (P.timer) { clearInterval(P.timer); P.timer = null; }
   if (!on) return;
-  P.folders = 0; P.pictures = 0; P.notes = 0;
+  P.folders = 0; P.pictures = 0; P.notes = 0; P.files = 0; P.failed = 0;
   var paint = function () {
     busy("looking through your WoW folder &mdash; <b>" + P.folders + "</b> folders, <b>" + P.pictures +
          "</b> pictures" + (P.notes ? ", <b>the notes</b>" : "") + " so far");
@@ -668,8 +670,10 @@ function walk(entry, out, depth, deep) {
   return new Promise(function (done) {
     if (!entry) return done();
     if (entry.isFile) {
+      P.files++;
       if (!counted(entry.fullPath || entry.name)) return done();
-      return entry.file(function (f) { f._path = entry.fullPath || f.name; out.push(f); done(); }, done);
+      return entry.file(function (f) { f._path = entry.fullPath || f.name; out.push(f); done(); },
+                        function () { P.failed = (P.failed || 0) + 1; done(); });
     }
     deep = deep || /^WTF$/i.test(entry.name);
     if (!entry.isDirectory || (depth > 0 && !deep && !worthWalking(entry.name, depth)) || depth > 9) return done();
@@ -706,6 +710,14 @@ function take(files) {
                         : '<span class="no">&#10007;</span> no pictures here');
   line.push(notesFiles.length ? '<span class="ok">&#10003;</span> the addon\'s notes'
                               : '<span class="no">&#10007;</span> no notes here (drop the <code>_classic_beta_</code> folder to get them)');
+  // NOTHING FOUND: what was handed over, and how far the page looked (Arn, 21 Oct 2026: a drag that found
+  // nothing, with no way to tell why - a shortcut, the wrong folder, a link all look alike from outside)
+  if (!pics.length && !notesFiles.length && P.dropped) {
+    line.push("<br>you dropped " + P.dropped + " &mdash; looked in " + P.folders + " folder" +
+              (P.folders === 1 ? "" : "s") + ", " + P.files + " file" + (P.files === 1 ? "" : "s") +
+              (P.failed ? ", <b>" + P.failed + " the browser would not let it read</b>" : "") +
+              ". Drop the <code>_classic_beta_</code> folder itself, from File Explorer.");
+  }
   if (say) say.innerHTML = line.join(" &nbsp; ");
   rememberPlace(pics, charFiles);              // after the line it adds to
   counting(false);
@@ -723,6 +735,7 @@ function take(files) {
   var el = document.getElementById(id);
   if (el) el.addEventListener("change", function (e) {
     var files = Array.prototype.slice.call(e.target.files || []);
+    if (!files.length) return;                    // the pick was cancelled: not "found nothing"
     counting(true);
     files.forEach(function (f) { counted(f.webkitRelativePath || f.name); });
     setTimeout(function () { take(files); }, 30);
@@ -755,6 +768,10 @@ document.addEventListener("drop", function (e) {
   }
   var out = [];
   counting(true);
+  P.dropped = entries.map(function (en) {
+    var what = en.isDirectory ? "folder" : (/\.lnk$/i.test(en.name) ? "shortcut" : "file");
+    return "<b>" + esc(en.name) + "</b> (a " + what + ")";
+  }).join(", ");
   Promise.all(entries.map(function (en) { return walk(en, out, 0); })).then(function () { take(out); });
 });
 
