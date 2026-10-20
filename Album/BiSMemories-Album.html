@@ -745,7 +745,16 @@ function take(files) {
 
 ["pics", "again"].forEach(function (id) {
   var el = document.getElementById(id);
-  if (el) el.addEventListener("change", function (e) {
+  if (!el) return;
+  // THE BAR FROM THE CLICK (Arn, 21 Oct 2026: "the progress bar only shows up when the files are generated
+  // already"): after Upload the browser itself reads every file in the folder - 21,700 of them - before this
+  // page hears a thing, so the bar starts at the click, and a cancelled window (the "cancel" event) ends it.
+  el.addEventListener("click", function () {
+    busy("choose the folder in the window that opened &mdash; then your browser reads it, which takes a few " +
+         "seconds for a big folder");
+  });
+  el.addEventListener("cancel", function () { idle(); });
+  el.addEventListener("change", function (e) {
     var files = Array.prototype.slice.call(e.target.files || []);
     if (!files.length) return;                    // the pick was cancelled: not "found nothing"
     counting(true);
@@ -979,6 +988,7 @@ document.getElementById("icon").onclick = async function () {
    nothing - and not throw on the first line and show an empty album. */
 var KEY = "bism-album-notes-1";
 var keptAt = null;
+var keptFrom = null;   // "folder": read from the game just now; "browser": kept from an earlier visit
 
 function remember(n) {
   try {
@@ -1016,10 +1026,14 @@ function showKept() {
   var when = d.getDate() + " " +
              ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
   el.style.display = "";
-  el.innerHTML = "<b>" + n + "</b> note" + (n === 1 ? "" : "s") + " remembered from this browser, " +
-                 "saved " + when + ". Pictures taken since then will have none until you load the " +
-                 "file again.<span id=\"forget\">forget them</span>";
-  document.getElementById("forget").onclick = forget;
+  // the old words ("remembered from this browser ... until you load the file again") were from the days of
+  // two buttons; notes read from the folder a moment ago are simply today's (Arn's screenshot, 21 Oct)
+  el.innerHTML = keptFrom === "folder"
+    ? "<b>" + n + "</b> note" + (n === 1 ? "" : "s") + " read from your game just now."
+    : "<b>" + n + "</b> note" + (n === 1 ? "" : "s") + " kept from your last visit (" + when + "). " +
+      "Choose your WoW folder again for newer ones.<span id=\"forget\">forget them</span>";
+  var fg = document.getElementById("forget");
+  if (fg) fg.onclick = forget;
 }
 
 function readNotesFile(f, then) {
@@ -1027,6 +1041,7 @@ function readNotesFile(f, then) {
   r.onload = function () {
     notes = readNotes(String(r.result || ""));
     shots.forEach(function (s) { s.note = notes[s.name.replace(/\.[a-z]+$/i, "")] || null; });
+    keptFrom = "folder";
     remember(notes);
     if (then) then(); else render();
   };
