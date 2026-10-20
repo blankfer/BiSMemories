@@ -1033,9 +1033,19 @@ H.section("where the album page is")
 do
   local J, d = NS.J, _G.BiSMemoriesDB
   d.wowPath = nil
-  H.eq(J.AlbumPath(), [[Interface\AddOns\BiSMemories\Album\BiSMemories-Album.html]],
-       "with nowhere set, the path is the part that is always true")
-  H.eq(J.AlbumPathWhole(), false, "and it says it is not the whole thing")
+  -- untold, a guess (Arn, 21 Oct 2026: "how close can we get them to the album html"): the launcher's folder,
+  -- and the version by the client - Forever's beta says IsBetaBuild() true (measured) and plays from
+  -- _classic_beta_; the live client from _forever_
+  local keepBeta = _G.IsBetaBuild
+  _G.IsBetaBuild = function() return true end
+  H.eq(J.AlbumPath(), [[C:\Program Files (x86)\World of Warcraft\_classic_beta_\Interface\AddOns\BiSMemories\Album\BiSMemories-Album.html]],
+       "with nowhere set: the beta client's folder, whole, to paste")
+  _G.IsBetaBuild = function() return false end
+  H.eq(J.AlbumPath():find([[\_forever_\Interface]], 1, true) ~= nil, true, "the live client's: _forever_")
+  _G.IsBetaBuild = nil
+  H.eq(J.AlbumPath():find([[\_forever_\Interface]], 1, true) ~= nil, true, "a client without the question: the live one")
+  _G.IsBetaBuild = keepBeta
+  H.eq(J.AlbumPathWhole(), false, "and it says it is a guess")
 
   J.SetWow([[C:\Program Files (x86)\World of Warcraft\_classic_beta_]])
   H.eq(J.AlbumPath(),
@@ -1058,9 +1068,10 @@ do
   H.eq(J.AlbumPath():find([[_classic_\Interface]], 1, true) ~= nil, true,
        "a slash already in the saved file is trimmed when the path is built")
 
-  -- THE VERSION FOLDER IS NEVER GUESSED. "_classic_beta_" is today's name, not launch day's.
+  -- a told folder always beats the guess
+  d.wowPath = [[D:\Games\WoW\_forever_]]
+  H.eq(J.AlbumPath():find([[D:\Games\WoW\_forever_\Interface]], 1, true) ~= nil, true, "a told folder beats the guess")
   d.wowPath = nil
-  H.eq(J.AlbumPath():find("_classic") == nil, true, "no version folder is invented")
 
   J.SetWow(nil)
   H.eq(d.wowPath, nil, "and it can be forgotten again")

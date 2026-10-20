@@ -69,14 +69,24 @@ end
 
 --------------------------------------------------------------------- the words --
 
--- Where the album page is, as far as this addon can honestly say: the tail is certain; the head is
--- whatever the player told us with `/bism wow`.
+-- Where the album page is. The tail is certain; the head is whatever the player told us with `/bism wow` -
+-- or, untold, A GUESS (Arn, 21 Oct 2026: "from in game how close can we get them to the album html with the
+-- copy and paste"): where the launcher installs WoW, and the version folder by what the client says it is -
+-- Forever's beta answers IsBetaBuild() true and plays from _classic_beta_ (measured that day); the live
+-- client from _forever_ (the folder Battle.net made beside it). A guess is said to be one, and /bism wow
+-- corrects it. Pasted into Windows key + R (or File Explorer's address bar) it opens the album.
 local TAIL = [[Interface\AddOns\BiSMemories\Album\BiSMemories-Album.html]]
+J.INSTALL = [[C:\Program Files (x86)\World of Warcraft]]
+
+function J.VersionFolder()
+  local ok, beta = pcall(function() return IsBetaBuild and IsBetaBuild() end)
+  return (ok and beta == true) and "_classic_beta_" or "_forever_"
+end
 
 function J.AlbumPath()
   local d = ns.DB and ns.DB()
   local root = type(d) == "table" and d.wowPath or nil
-  if type(root) ~= "string" or root == "" then return TAIL end
+  if type(root) ~= "string" or root == "" then root = J.INSTALL .. "\\" .. J.VersionFolder() end
   return (root:gsub("[\\/]+$", "")) .. "\\" .. TAIL
 end
 
@@ -621,8 +631,8 @@ function J.Refresh()
   f.pathBox:SetText(J.AlbumPath())
   f.pathBox:SetCursorPosition(0)
   f.pathLabel:SetText(T.text("muted", J.AlbumPathWhole()
-    and "the album page with your pictures - click it, then Ctrl+C"
-    or "the album page with your pictures - /bism wow <folder> for the whole path"))
+    and "your album: click, Ctrl+C, then Windows key + R, Ctrl+V, Enter"
+    or "your album: click, Ctrl+C, then Windows key + R, Ctrl+V, Enter  -  WoW somewhere else? /bism wow <folder>"))
   return true, n
 end
 
