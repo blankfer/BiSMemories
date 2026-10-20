@@ -12,9 +12,12 @@
 - **Clean pictures:** the interface hides for the instant of the shot, like Alt+Z, and comes straight back. `/bism clean` turns it off.
 - **A minimap button** (the spyglass) and **an options window** for every setting - `/bism options`, or right-click the button.
 - **Bosses: the first kill, and your fastest.** Every kill every week filled the album with the same boss. A boss is a memory the first time this character kills it, and again when a kill is your fastest yet. `/bism every boss` brings every kill back.
-- **Deaths worth keeping:** killed by a player or one of your BiS Tools rivals, dying in a boss fight, and your first death ever. `/bism every death` keeps them all.
+- **Deaths worth keeping:** killed by a player or one of your BiS Tools rivals, dying in a boss fight, and your first death ever. In a battleground or arena only a rival's kill counts. `/bism every death` keeps them all.
+- **The album, made easy:** open the album page (the journal's box at the bottom holds its whole path: click, Ctrl+C, Windows key + R, Ctrl+V, Enter), press **Choose your WoW folder** once, and it finds your pictures and the notes by itself. After that it opens straight to your album every time, and **Make a desktop icon** puts it a double-click away. The page shows your game folder with a Copy button, and a bar while it works.
+- **Who was there:** each picture keeps your group by their whole names. Click a name on the postcard to whisper them, invite them, or add them as a friend or a BiS Tools pal.
+- **Your older pictures sort themselves out:** pictures from before this version are given to the character who took them (worked out from the levels), boss kills get their boss once you target that boss again, and the map places them by their zone.
 - **Firsts:** your first mount, a new mount, learning to ride. **Gamba:** your biggest win yet at a BiS Gamba table.
-- **Each character their own:** every memory says who took it, and each character has their own list of places - an alt now gets her first time in the Barrens even if your main was there first.
+- **Each character their own:** every memory says who took it, and each character has their own list of places - an alt now gets their own first time in the Barrens even if your main was there first.
 - **Fixed:** a ding could be written down as the level before; going exalted could be missed when the game said it as a system line.
 - `/bism db` says which saved copy came back at login.
 
