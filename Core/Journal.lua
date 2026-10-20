@@ -1,98 +1,122 @@
 --[[
   BiSMemories :: Core/Journal.lua - the album, in game.
 
-      /bism journal             open it (also /bism album)
+      /bism journal             open it (also /bism album, the minimap button)
 
-  WHAT THIS IS AND IS NOT. Arn asked for the album inside the addon, reading the Screenshots
-  folder. The reading is not possible and never will be, on any client:
+  THE FAMILY'S WINDOW (0.9.0, Arn on the review, 21 Oct 2026: "do all that stuff"). 1.43:1 like every
+  BiS window, and the list-and-detail shape Arn likes in Blizzard's classics:
+    * MEMORIES: the nights on the left, newest first, one line each (when, what kind, what); click one and
+      the right side holds it whole - where, who with, the picture's file name to copy - over a POSTCARD:
+      you in 3D, dressed in what you wore that moment and striking the pose of it, beside the creature
+      it was about (the boss you killed, whoever killed you).
+    * MAP: Azeroth with a dot for every memory taken out in the world (Map.lua).
+    * THIS YEAR: what the notes add up to (Moments.lua M.Summary).
+  A button in the header shows this character's memories or every character's.
 
-    * no addon can list a directory. There is no API for "what files are in Screenshots". The
-      only reason this addon knows a picture exists is that IT called Screenshot() and wrote the
-      filename down from the clock.
-    * a texture loads from Interface\ and from BLP or TGA. A .jpg sitting in the client's
-      Screenshots folder cannot be drawn on a frame at all. That is why album.html exists: a
-      browser can open those files and the game cannot.
-
-  So this is the journal, not the album: what happened, in words, with the filename beside each
-  entry so a picture on disk can be matched to the night it came from. The pictures stay with the
-  companion. Nobody should have to be told this twice, hence the length of this comment.
-
-  AND ON THIS CLIENT IT IS TODAY ONLY. The Forever beta hands back no saved variables, so the log
-  starts empty at every login. The window is honest about that rather than looking broken - see
-  the empty line at the bottom of Refresh. If the client is ever fixed, this same window becomes
-  a real history with nothing else to change.
+  WHAT IT CANNOT DO, AND NEVER WILL, ON ANY CLIENT: show the pictures. No addon can list a folder, and a
+  .jpg in Screenshots cannot be drawn on a frame. The postcard is the nearest the game itself can come;
+  the pictures stay with the album page (Album/), whose path is in the copy box at the bottom.
 ]]
 local ADDON, ns = ...
 local T, M = ns.T, ns.M
 local J = {}
 ns.J = J
 
-local ROWS = 12                 -- how many fit; the wheel moves a page of them
-local GAP = 3 * 60 * 60         -- seconds of quiet that end a raid night (same rule as the album)
--- TALL ENOUGH FOR WHAT IS IN IT. 300 was right for twelve rows and a footer; the copy box and its
--- label went in underneath and printed straight through the last two memories (3 Oct 2026, Arn's
--- screenshot). Twelve rows end 270 below the top, the box and its label want about 70 from the
--- bottom, and the arithmetic has to be written down or the next thing added lands on top again.
-local W, H = 440, 348
+J.W, J.H = 700, 490                 -- 1.43:1, the BiS window standard
+J.HEAD, J.FOOT = 30, 50
+J.LIST_W = 300
+J.ROW_H = 18
+J.LIST_TOP = J.HEAD + 6             -- the first row's top, below the header
+J.ROWS = math.floor((J.H - J.LIST_TOP - J.FOOT - 6) / J.ROW_H)
+J.DETAIL_X = 8 + J.LIST_W + 10
+J.DETAIL_W = J.W - J.DETAIL_X - 8
+J.POST_H = 210
+local GAP = 3 * 60 * 60             -- seconds of quiet that end a raid night (same rule as the album)
 
-local function when(at)
-  if not at or at == 0 then return "?" end
-  return date and date("%d %b %H:%M", at) or tostring(at)
+-- THE POSE OF THE MOMENT: the client's animation ids (BiS Gamba's and ADVENT's, seen in game)
+J.POSE = { levelup = 68, boss = 82, loot = 64, achievement = 80, death = 1, duel = 82, zone = 84, exalted = 113,
+           candid = 0, manual = 67, first = 68, gamba = 70, group = 67 }
+
+local function rgb(name) return T.rgb(name) end
+local function tex(parent, layer, name, a)
+  local t = parent:CreateTexture(nil, layer)
+  local r, g, b = rgb(name)
+  t:SetColorTexture(r, g, b, a or 1)
+  return t
 end
 
---- Where the album page is, as far as this addon can honestly say.
----
---- The tail is certain - every WoW install puts an addon in the same place relative to its own
---- version folder. The head is not knowable from in game, so it is whatever the player told us
---- with `/memories wow`, and until they do, the line says plainly which bit is missing.
+local function when(at, fmt)
+  if not at or at == 0 then return "?" end
+  return date and date(fmt or "%d %b %H:%M", at) or tostring(at)
+end
+
+--- Text cut to fit `px` at `size` pt, with "..." - measured the way the suite's fit check measures the
+--- client (capitals and digits 0.75 px a point, lower case 0.55, the rest 0.3); colour and link codes
+--- take no room, and a link keeps only its [Name].
+function J.Clip(s, px, size)
+  s = tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", "")
+  size = size or 10
+  local w, out = 0, {}
+  local dots = 3 * 0.3 * size
+  for ch in s:gmatch(".") do
+    local cw = (ch:match("[%u%d]") and 0.75 or ch:match("%l") and 0.55 or 0.3) * size
+    if w + cw > px - dots then return table.concat(out) .. "..." end
+    w = w + cw
+    out[#out + 1] = ch
+  end
+  return s
+end
+
+--------------------------------------------------------------------- the words --
+
+-- Where the album page is, as far as this addon can honestly say: the tail is certain; the head is
+-- whatever the player told us with `/bism wow`.
 local TAIL = [[Interface\AddOns\BiSMemories\Album\BiSMemories-Album.html]]
 
 function J.AlbumPath()
-    local d = ns.DB and ns.DB()
-    local root = type(d) == "table" and d.wowPath or nil
-    if type(root) ~= "string" or root == "" then return TAIL end
-    return (root:gsub("[\\/]+$", "")) .. "\\" .. TAIL
+  local d = ns.DB and ns.DB()
+  local root = type(d) == "table" and d.wowPath or nil
+  if type(root) ~= "string" or root == "" then return TAIL end
+  return (root:gsub("[\\/]+$", "")) .. "\\" .. TAIL
 end
 
---- True when the path above is the whole thing rather than the tail.
 function J.AlbumPathWhole()
-    local d = ns.DB and ns.DB()
-    local root = type(d) == "table" and d.wowPath or nil
-    return type(root) == "string" and root ~= ""
+  local d = ns.DB and ns.DB()
+  local root = type(d) == "table" and d.wowPath or nil
+  return type(root) == "string" and root ~= ""
 end
 
---- Remember where WoW is, so the box holds a path a browser will take. Returns what was stored.
----
---- Deliberately not validated beyond trimming: an addon cannot check that a folder exists, and
---- refusing a path we cannot verify would be refusing the only thing the player knows better
---- than we do.
+--- Remember where WoW is (trimmed, never validated - the player knows it better than an addon can).
 function J.SetWow(path)
-    local d = ns.DB and ns.DB()
-    if type(d) ~= "table" then return nil end
-    if type(path) ~= "string" or path:gsub("%s", "") == "" then
-        d.wowPath = nil
-    else
-        d.wowPath = (path:gsub("^%s+", ""):gsub("%s+$", ""):gsub("[\\/]+$", ""))
-    end
-    if J.frame and J.frame:IsShown() then J.Refresh() end
-    return d.wowPath
+  local d = ns.DB and ns.DB()
+  if type(d) ~= "table" then return nil end
+  if type(path) ~= "string" or path:gsub("%s", "") == "" then
+    d.wowPath = nil
+  else
+    d.wowPath = (path:gsub("^%s+", ""):gsub("%s+$", ""):gsub("[\\/]+$", ""))
+  end
+  if J.frame and J.frame:IsShown() then J.Refresh() end
+  return d.wowPath
 end
 
---- One entry as a row: when, why, what. WHERE AND WHO ARE IN THE TOOLTIP (6 Oct 2026). The row
---- used to carry the zone and ", with 4" too, and a real one - a death in "Blackrock Depths - The
---- Grim Guzzler", whose detail IS that zone - needed 531 px of a 416 px row; the client cut it
---- with "...". The night's heading already names the place, and a count is a caption: one row,
---- one label, the rest on hover. The chat listing (Slash.lua) keeps the long form - chat wraps.
+--- The memories on show: this character's, or every character's (J.everyone).
+function J.Entries()
+  local log, out = M.Log(), {}
+  local me = M.Me()
+  for _, e in ipairs(log) do
+    if J.everyone or e.char == nil or e.char == me then out[#out + 1] = e end
+  end
+  return out
+end
+
+--- One entry as a list row: the time, the kind in words, what it was. Where and who are in the
+--- tooltip and the detail pane; the night's heading has the day.
 function J.Line(e)
   if type(e) ~= "table" then return "" end
-  return ("%s  %s  %s"):format(
-    T.text("muted", when(e.at)),
-    T.text("accent", e.reason or "?"),
-    tostring(e.detail or ""))
+  return ("%s  %s  %s"):format(when(e.at, "%H:%M"), M.Word(e.reason), tostring(e.detail or ""))
 end
 
---- What hovering a row says: where, who with, which picture on disk. Returns the lines, so a test
---- can ask without a tooltip.
+--- What hovering a row (or a map dot) says: where, who with, which picture on disk.
 function J.TipLines(e)
   if type(e) ~= "table" then return {} end
   local out = { tostring(e.zone or "?") }
@@ -101,28 +125,30 @@ function J.TipLines(e)
   return out
 end
 
-function J.Tip(owner, e)
+--- `full`: a map dot's tooltip, which also says what it was.
+function J.Tip(owner, e, full)
   if not (GameTooltip and type(e) == "table") then return end
   local lines = J.TipLines(e)
   GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-  GameTooltip:SetText(lines[1])
-  for i = 2, #lines do GameTooltip:AddLine(T.text("muted", lines[i])) end
+  if full then
+    GameTooltip:SetText(M.Word(e.reason) .. "  " .. tostring(e.detail or ""))
+    GameTooltip:AddLine(T.text("muted", when(e.at, "%d %b %Y %H:%M")))
+    for i = 1, #lines do GameTooltip:AddLine(T.text("muted", lines[i])) end
+  else
+    GameTooltip:SetText(lines[1])
+    for i = 2, #lines do GameTooltip:AddLine(T.text("muted", lines[i])) end
+  end
   GameTooltip:Show()
 end
 
---- The log as LINES: a heading for each raid night, then that night's memories under it.
----
---- Same rule as the album page, deliberately - one log, one idea of what a night is. A night is a
---- run with no three-hour gap in it, so one that starts at eight and ends at twenty to one is one
---- night and not two days. It is titled by the zone its BOSSES died in, falling back to wherever
---- most of it happened, and dated by when it STARTED.
+--- The memories as LINES: a heading for each night, its memories under it. A night is a run with no
+--- three-hour gap in it, titled by the zone its bosses died in (else where it began), dated by its start.
 function J.Lines()
-  local log = M.Log()
+  local log = J.Entries()
   local out, cur = {}, nil
   for i = 1, #log do
     local e = log[i]
     local at = tonumber(e.at) or 0
-    -- the log is newest first, so each entry is OLDER than the one before it
     if not cur or (cur.oldest - at) > GAP then
       cur = { newest = at, oldest = at, bosses = 0, bossZone = nil, anyZone = e.zone }
       out[#out + 1] = { head = cur }
@@ -138,7 +164,7 @@ function J.Lines()
   return out
 end
 
---- A night's heading, as one line of text.
+--- A night's heading: where, the day, from-to, how many bosses.
 function J.Head(h)
   if type(h) ~= "table" then return "" end
   local where = h.bossZone or h.anyZone or "somewhere"
@@ -150,9 +176,39 @@ function J.Head(h)
   return T.text("accent", where) .. T.text("muted", ("  %s  %s%s"):format(day, span, kills))
 end
 
+--------------------------------------------------------------------- the window --
+
+local function button(parent, w, h, word, onClick)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(w, h)
+  b.bg = tex(b, "BACKGROUND", "sunken", 0.95)
+  b.bg:SetAllPoints()
+  b.word = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  b.word:SetPoint("CENTER", 0, 0)
+  b.word:SetText(word)
+  b:SetScript("OnClick", onClick)
+  return b
+end
+
+local function label(parent, template, x, y, w, h)
+  local fs = parent:CreateFontString(nil, "OVERLAY", template or "GameFontHighlightSmall")
+  fs:SetPoint("TOPLEFT", x or 0, y or 0)
+  -- a label with a width is pinned on both sides, so it wraps inside them (and the fit check knows it)
+  if w then fs:SetWidth(w) fs:SetPoint("TOPRIGHT", parent, "TOPLEFT", (x or 0) + w, y or 0) end
+  if h then fs:SetHeight(h) fs:SetWordWrap(true) else fs:SetWordWrap(false) end
+  fs:SetJustifyH("LEFT")
+  return fs
+end
+
+local function model(parent, w, h)
+  local m = CreateFrame("DressUpModel", nil, parent)
+  m:SetSize(w, h)
+  return m
+end
+
 local function build()
   if J.frame then return J.frame end
-
+  local W, H = J.W, J.H
   local f = CreateFrame("Frame", "BiSMemoriesJournal", UIParent)
   f:SetSize(W, H)
   f:SetPoint("CENTER")
@@ -162,140 +218,337 @@ local function build()
   f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", function(self) self:StartMoving() end)
   f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
-
-  local bg = f:CreateTexture(nil, "BACKGROUND")
+  local bg = tex(f, "BACKGROUND", "bg", 0.96)
   bg:SetAllPoints()
-  bg:SetColorTexture(0, 0, 0, 0.82)
+  local bar = tex(f, "BORDER", "surface", 1)
+  bar:SetPoint("TOPLEFT", 0, 0)
+  bar:SetPoint("TOPRIGHT", 0, 0)
+  bar:SetHeight(J.HEAD - 4)
 
   local head = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  head:SetPoint("TOPLEFT", 12, -10)
+  head:SetPoint("TOPLEFT", 10, -7)
   head:SetText(T.text("accent", "BiS> Memories"))
 
-  -- ONE LABEL IN THE BAR, and the count is part of that label rather than a second string
-  -- printing through it. Two FontStrings in one header did exactly that, twice, in another addon.
-  f.count = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  f.count:SetPoint("TOPRIGHT", -34, -12)
+  -- THE PAGES: three words in the bar, the chosen one in the accent colour
+  f.tabs = {}
+  for i, name in ipairs({ "memories", "map", "this year" }) do
+    local b = button(f, 76, 18, name, function() J.Tab(name) end)
+    b:SetPoint("TOPLEFT", 120 + (i - 1) * 80, -4)
+    b.name = name
+    f.tabs[i] = b
+  end
+  f.who = button(f, 120, 18, "this character", function()
+    J.everyone = not J.everyone
+    J.offset = 0
+    J.Refresh()
+  end)
+  f.who:SetPoint("TOPRIGHT", -34, -4)
 
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-  close:SetPoint("TOPRIGHT", -4, -4)
+  close:SetPoint("TOPRIGHT", -2, -1)
   close:SetScript("OnClick", function() J.Hide() end)
 
+  ------------------------------------------------ memories: the list
+  local list = CreateFrame("Frame", nil, f)
+  list:SetPoint("TOPLEFT", 8, -(J.HEAD + 2))
+  list:SetSize(J.LIST_W, J.ROWS * J.ROW_H + 8)
+  local lbg = tex(list, "BACKGROUND", "sunken", 0.9)
+  lbg:SetAllPoints()
+  f.list = list
+  f.sel = tex(list, "BORDER", "line2", 0.9)
+  f.sel:SetHeight(J.ROW_H)
+  f.sel:Hide()
   f.rows, f.hits = {}, {}
-  for i = 1, ROWS do
-    local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fs:SetPoint("TOPLEFT", 12, -34 - (i - 1) * 20)
-    fs:SetPoint("RIGHT", f, "RIGHT", -12, 0)
+  for i = 1, J.ROWS do
+    local fs = list:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetPoint("TOPLEFT", 6, -4 - (i - 1) * J.ROW_H)
+    fs:SetPoint("RIGHT", list, "RIGHT", -6, 0)
     fs:SetJustifyH("LEFT")
     if fs.SetWordWrap then fs:SetWordWrap(false) end
     f.rows[i] = fs
-    -- the hover patch for the row's tooltip. A child under the mouse would swallow the window's
-    -- drag, so it hands the drag on; the wheel is not enabled here, so it falls through to f.
-    local hit = CreateFrame("Button", nil, f)
-    hit:SetPoint("TOPLEFT", 12, -32 - (i - 1) * 20)
-    hit:SetPoint("RIGHT", f, "RIGHT", -12, 0)
-    hit:SetHeight(20)
+    -- the hover and click patch: hands the drag on to the window, so a row never pins it in place
+    local hit = CreateFrame("Button", nil, list)
+    hit:SetPoint("TOPLEFT", 0, -2 - (i - 1) * J.ROW_H)
+    hit:SetPoint("RIGHT", list, "RIGHT", 0, 0)
+    hit:SetHeight(J.ROW_H)
     hit:RegisterForDrag("LeftButton")
     hit:SetScript("OnDragStart", function() f:StartMoving() end)
     hit:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
     hit:SetScript("OnEnter", function(self) J.Tip(self, self.entry) end)
     hit:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    hit:SetScript("OnClick", function(self) if self.entry then J.Select(self.entry) end end)
     f.hits[i] = hit
   end
+  -- the wheel walks the list, a few rows a notch
+  f:EnableMouseWheel(true)
+  f:SetScript("OnMouseWheel", function(_, delta) J.Scroll(-delta * 3) end)
 
-  -- WHERE THE ALBUM IS, IN A BOX YOU CAN COPY (3 Oct 2026). Arn, having gone looking for it:
-  -- the pictures live in a page on disk and nothing in game ever said where. A font string cannot
-  -- be copied, so this is an EditBox - the same trick every export string in every addon uses -
-  -- and clicking it selects the lot, ready for Ctrl+C.
-  --
-  -- NO ADDON CAN KNOW ITS OWN FULL PATH. There is no API for the install directory and none for
-  -- the flavour folder either: GetBuildInfo gives a version, not a place. So the part that is
-  -- ALWAYS true is shown by default, and `/memories wow <folder>` makes it absolute and keeps it.
-  -- That is also why the folder is not written down anywhere here - `_classic_beta_` is today's
-  -- name and will not be the name at launch, and a guess that goes stale is worse than a line that
-  -- tells the truth.
+  ------------------------------------------------ memories: the detail and its postcard
+  local d = CreateFrame("Frame", nil, f)
+  d:SetPoint("TOPLEFT", J.DETAIL_X, -(J.HEAD + 2))
+  d:SetSize(J.DETAIL_W, J.H - J.HEAD - J.FOOT - 4)
+  f.detail = d
+  local post = CreateFrame("Frame", nil, d)
+  post:SetPoint("TOPLEFT", 0, 0)
+  post:SetSize(J.DETAIL_W, J.POST_H)
+  local pbg = tex(post, "BACKGROUND", "sunken", 0.9)
+  pbg:SetAllPoints()
+  post.you = model(post, 190, J.POST_H - 6)
+  post.you:SetPoint("BOTTOMLEFT", 6, 3)
+  post.them = model(post, 180, J.POST_H - 16)
+  post.them:SetPoint("BOTTOMRIGHT", -6, 3)
+  post.note = label(post, "GameFontDisableSmall", 10, -8)
+  f.post = post
+  local DW, x, y = J.DETAIL_W - 8, 4, -(J.POST_H + 8)
+  f.kind = label(d, "GameFontNormal", x, y)
+  f.text = label(d, "GameFontHighlight", x, y - 18, DW, 30)
+  f.where = label(d, "GameFontDisableSmall", x, y - 52)
+  f.whoWith = label(d, "GameFontDisableSmall", x, y - 68, DW, 26)
+  f.more = label(d, "GameFontDisableSmall", x, y - 96)
+  f.fileBox = CreateFrame("EditBox", nil, d)
+  f.fileBox:SetPoint("TOPLEFT", x, y - 114)
+  f.fileBox:SetSize(220, 16)
+  f.fileBox:SetAutoFocus(false)
+  f.fileBox:SetFontObject("GameFontHighlightSmall")
+  f.fileBox:SetTextInsets(4, 4, 0, 0)
+  local fbg = f.fileBox:CreateTexture(nil, "BACKGROUND")
+  fbg:SetAllPoints()
+  fbg:SetColorTexture(1, 1, 1, 0.07)
+  f.fileBox:SetScript("OnMouseUp", function(self) self:HighlightText() self:SetFocus() end)
+  f.fileBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+  f.fileBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+  f.fileBox:SetScript("OnEnterPressed", function(self) self:SetText(J.sel and J.sel.file or "") self:HighlightText() end)
+
+  ------------------------------------------------ the map page
+  local map = CreateFrame("Frame", nil, f)
+  map:SetPoint("TOPLEFT", 8, -(J.HEAD + 2))
+  map:SetSize(J.W - 16, J.H - J.HEAD - J.FOOT - 4)
+  local mbg = tex(map, "BACKGROUND", "sunken", 0.9)
+  mbg:SetAllPoints()
+  map.say = label(map, "GameFontDisableSmall", 8, -6)
+  f.map = map
+
+  ------------------------------------------------ the year page
+  local year = CreateFrame("Frame", nil, f)
+  year:SetPoint("TOPLEFT", 8, -(J.HEAD + 2))
+  year:SetSize(J.W - 16, J.H - J.HEAD - J.FOOT - 4)
+  local ybg = tex(year, "BACKGROUND", "sunken", 0.9)
+  ybg:SetAllPoints()
+  year.lines = {}
+  for i = 1, 10 do
+    year.lines[i] = label(year, i == 1 and "GameFontNormal" or "GameFontHighlightSmall", 14, -14 - (i - 1) * 22,
+      J.W - 50, 20)
+  end
+  f.year = year
+
+  ------------------------------------------------ the foot: the album page's path, ready to copy
   f.pathLabel = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  f.pathLabel:SetPoint("BOTTOMLEFT", 12, 50)
+  f.pathLabel:SetPoint("BOTTOMLEFT", 10, 28)
   f.pathLabel:SetJustifyH("LEFT")
-
+  f.count = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  f.count:SetPoint("BOTTOMRIGHT", -10, 28)
   f.pathBox = CreateFrame("EditBox", nil, f)
-  f.pathBox:SetPoint("BOTTOMLEFT", 12, 28)
-  f.pathBox:SetPoint("RIGHT", f, "RIGHT", -12, 0)
-  f.pathBox:SetHeight(18)
+  f.pathBox:SetPoint("BOTTOMLEFT", 10, 8)
+  f.pathBox:SetPoint("RIGHT", f, "RIGHT", -10, 0)
+  f.pathBox:SetHeight(16)
   f.pathBox:SetAutoFocus(false)
   f.pathBox:SetFontObject("GameFontHighlightSmall")
   f.pathBox:SetTextInsets(4, 4, 0, 0)
   local boxBG = f.pathBox:CreateTexture(nil, "BACKGROUND")
   boxBG:SetAllPoints()
   boxBG:SetColorTexture(1, 1, 1, 0.07)
-  -- select on click, and again whenever focus arrives: a player who clicks it wants all of it
   f.pathBox:SetScript("OnMouseUp", function(self) self:HighlightText() self:SetFocus() end)
   f.pathBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
   f.pathBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-  -- typing in it must not change the answer: whatever is typed, the path comes back
   f.pathBox:SetScript("OnEnterPressed", function(self) self:SetText(J.AlbumPath()) self:HighlightText() end)
 
-  f.foot = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  f.foot:SetPoint("BOTTOMLEFT", 12, 10)
-  f.foot:SetPoint("RIGHT", f, "RIGHT", -12, 0)
-  f.foot:SetJustifyH("LEFT")
-
-  -- the wheel walks the list, because a scrollbar is a lot of frame for twelve lines
-  f:EnableMouseWheel(true)
-  f:SetScript("OnMouseWheel", function(_, delta) J.Scroll(-delta) end)
-
-  -- Escape closes it, the way every other window in the game does
   if UISpecialFrames then table.insert(UISpecialFrames, "BiSMemoriesJournal") end
-
   f:Hide()
   J.frame = f
+  J.page = J.page or "memories"
   return f
 end
+J.Build = build
 
---- Move by `by` rows, clamped. Returns where it landed, so a test can ask.
+--------------------------------------------------------------------- painting --
+
+--- Move the list by `by` rows, clamped. Answers where it landed.
 function J.Scroll(by)
-  local most = math.max(0, #J.Lines() - ROWS)
+  local most = math.max(0, #J.Lines() - J.ROWS)
   J.offset = math.max(0, math.min(most, (J.offset or 0) + (by or 0)))
   if J.frame and J.frame:IsShown() then J.Refresh() end
   return J.offset
 end
 
-function J.Refresh()
-  local f = build()
+--- Which page: "memories", "map" or "this year".
+function J.Tab(name)
+  J.page = name
+  if J.frame and J.frame:IsShown() then J.Refresh() end
+  return J.page
+end
+
+--- Open a memory: the right side holds it whole, the postcard shows it.
+function J.Select(e)
+  J.sel = e
+  J.page = "memories"
+  if J.frame and J.frame:IsShown() then J.Refresh() end
+  return e
+end
+
+--- THE POSTCARD: you in 3D, in what you wore and the moment's pose, beside its creature. Asked twice -
+--- the client does not draw a body on the first ask (BiS Shell measured it for SURVIVOR) - and only for
+--- your own memories: an addon can draw the character you are playing, not one who is logged out.
+function J.Postcard(e)
+  local p = J.frame and J.frame.post
+  if not p then return end
+  local you, them = p.you, p.them
+  local mine = type(e) == "table" and (e.char == nil or e.char == M.Me())
+  p.note:SetText("")
+  if mine then
+    you:Show()
+    pcall(you.ClearModel, you)
+    pcall(you.SetUnit, you, "player")
+    if type(e.gear) == "table" and you.Undress and you.TryOn then
+      pcall(you.Undress, you)
+      for _, id in pairs(e.gear) do pcall(you.TryOn, you, "item:" .. tostring(id)) end
+    end
+    pcall(you.SetFacing, you, 0.5)
+    pcall(you.SetAnimation, you, J.POSE[e.reason] or 0)
+  else
+    you:Hide()
+    if type(e) == "table" and e.char then
+      p.note:SetText(T.text("muted", "played by " .. tostring(e.char):match("^[^%-]+")))
+    end
+  end
+  local npc = type(e) == "table" and tonumber(e.npc)
+  if npc then
+    them:Show()
+    local function ask()
+      pcall(them.SetCreature, them, npc)
+      pcall(them.SetFacing, them, -0.5)
+      -- a boss you killed lies where it fell; whoever killed you stands over you
+      pcall(them.SetAnimation, them, (e.reason == "boss") and 1 or 0)
+    end
+    ask()
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0.3, function() if J.sel == e and them:IsShown() then ask() end end)
+    end
+  else
+    them:Hide()
+  end
+end
+
+local function paintDetail(f)
+  local e = J.sel
+  if type(e) ~= "table" then
+    f.post.you:Hide()
+    f.post.them:Hide()
+    f.kind:SetText(T.text("muted", #M.Log() == 0 and "nothing yet" or "pick a memory on the left"))
+    f.text:SetText(#M.Log() == 0 and "It fires on levels, first kills, rare loot, achievements and more." or "")
+    f.where:SetText("") f.whoWith:SetText("") f.more:SetText("")
+    f.fileBox:Hide()
+    return
+  end
+  J.Postcard(e)
+  local DW = J.DETAIL_W - 8
+  f.kind:SetText(T.text("accent", M.Word(e.reason)) .. T.text("muted", "  " .. when(e.at, "%a %d %b %Y  %H:%M")))
+  f.text:SetText(tostring(e.detail or ""))
+  local lvl = (type(e.level) == "number" and e.level > 0) and ("  -  level " .. e.level) or ""
+  f.where:SetText(J.Clip(tostring(e.zone or "?") .. lvl, DW, 10))
+  local with = type(e.with) == "table" and #e.with > 0 and ("with " .. table.concat(e.with, ", ")) or ""
+  f.whoWith:SetText(with)
+  local more = {}
+  if e.secs then more[#more + 1] = ("the fight took %d:%02d"):format(math.floor(e.secs / 60), math.floor(e.secs % 60)) end
+  if e.from then more[#more + 1] = "asked for by " .. tostring(e.from) end
+  if e.char and e.char ~= M.Me() then more[#more + 1] = "on " .. tostring(e.char) end
+  f.more:SetText(J.Clip(table.concat(more, "  -  "), DW, 10))
+  if e.file then
+    f.fileBox:Show()
+    f.fileBox:SetText(e.file)
+    f.fileBox:SetCursorPosition(0)
+  else
+    f.fileBox:Hide()
+  end
+end
+
+local function paintList(f)
   local lines = J.Lines()
-  local n = #M.Log()
-  J.offset = math.max(0, math.min(math.max(0, #lines - ROWS), J.offset or 0))
-
-  f.count:SetText(T.text("muted", n == 0 and "" or (n .. " kept")))
-
-  for i = 1, ROWS do
-    -- NEWEST FIRST: the log is kept newest-first already (Memories.lua inserts at 1), so the
-    -- offset counts down the page rather than up from the end
+  J.offset = math.max(0, math.min(math.max(0, #lines - J.ROWS), J.offset or 0))
+  f.sel:Hide()
+  local px = J.LIST_W - 12
+  for i = 1, J.ROWS do
     local l = lines[i + J.offset]
     f.hits[i].entry = l and l.entry or nil
-    if not l then f.rows[i]:SetText("")
-    elseif l.head then f.rows[i]:SetText(J.Head(l.head))
-    else f.rows[i]:SetText(J.Line(l.entry)) end
+    if not l then
+      f.rows[i]:SetText("")
+    elseif l.head then
+      f.rows[i]:SetText(T.text("accent", J.Clip((J.Head(l.head):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")), px, 10)))
+    else
+      local e = l.entry
+      local text = J.Clip(J.Line(e), px - 8, 10)
+      f.rows[i]:SetText("  " .. text)
+      if e == J.sel then
+        f.sel:ClearAllPoints()
+        f.sel:SetPoint("TOPLEFT", f.list, "TOPLEFT", 2, -2 - (i - 1) * J.ROW_H)
+        f.sel:SetPoint("RIGHT", f.list, "RIGHT", -2, 0)
+        f.sel:Show()
+      end
+    end
   end
+end
 
-  -- the copy box, every refresh, so `/memories wow` shows up without reopening the window
+local function paintMap(f)
+  local entries = J.Entries()
+  local map = J.mapID or (ns.MapView and ns.MapView.Start())
+  local n, inside, off
+  if ns.MapView and map then
+    n, inside, off = ns.MapView.Draw(f.map, entries, map, function(e) J.Select(e) end)
+  end
+  if not n then
+    f.map.say:SetText(T.text("muted", "the game gave no map to draw here - the pins on your world map still show"))
+  else
+    f.map.say:SetText(T.text("muted", ("%d on the map%s"):format(n,
+      (inside or 0) > 0 and ("  -  %d inside dungeons and raids, where the game gives no spot"):format(inside) or "")))
+  end
+end
+
+local function paintYear(f)
+  local s = M.Summary(nil, (not J.everyone) and M.Me() or nil)
+  local lines = M.SummaryLines(s)
+  for i, fs in ipairs(f.year.lines) do
+    local t = lines[i]
+    if i == 1 and t then t = T.text("accent", t) end
+    fs:SetText(t and J.Clip(t, J.W - 50, i == 1 and 12 or 10) or "")
+  end
+end
+
+function J.Refresh()
+  local f = build()
+  J.page = J.page or "memories"
+  for _, b in ipairs(f.tabs) do
+    b.word:SetText(b.name == J.page and T.text("accent", b.name) or T.text("ink2", b.name))
+  end
+  f.who.word:SetText(J.everyone and "every character" or "this character")
+  local list = J.page == "memories"
+  f.list:SetShown(list)
+  f.detail:SetShown(list)
+  f.map:SetShown(J.page == "map")
+  f.year:SetShown(J.page == "this year")
+  if list then
+    paintList(f)
+    paintDetail(f)
+  elseif J.page == "map" then
+    paintMap(f)
+  else
+    paintYear(f)
+  end
+  local n = #J.Entries()
+  f.count:SetText(T.text("muted", n == 0 and "" or (n .. " kept")))
   f.pathBox:SetText(J.AlbumPath())
   f.pathBox:SetCursorPosition(0)
-  -- SHORT ENOUGH TO FIT ON THE BAR. The first wording ran off the right edge of a 440 wide window
-  -- and was cut mid-word; the long explanation belongs in /memories path, which has a whole chat
-  -- frame to use.
   f.pathLabel:SetText(T.text("muted", J.AlbumPathWhole()
-    and "the album page - click it, then Ctrl+C"
-    or "the album page - inside your WoW folder. /bism wow <folder> for the whole path"))
-
-  if n == 0 then
-    f.foot:SetText(T.text("muted",
-      "nothing yet today. It fires on levels, bosses, rare loot, achievements and dying."))
-  elseif #lines > ROWS then
-    f.foot:SetText(T.text("muted", ("%d of %d kept - wheel to scroll")
-      :format(math.min(n, J.offset + ROWS), n)))
-  else
-    f.foot:SetText(T.text("muted", "the pictures are in your Screenshots folder"))
-  end
+    and "the album page with your pictures - click it, then Ctrl+C"
+    or "the album page with your pictures - /bism wow <folder> for the whole path"))
   return true, n
 end
 
@@ -319,4 +572,52 @@ end
 --- Called when a memory lands, so an open window does not go stale while you play.
 function J.Touch()
   if J.frame and J.frame:IsShown() then J.Refresh() end
+end
+
+--------------------------------------------------------------------- on screen --
+
+--- ON THIS DAY's card: top of the screen for J.TOAST_FOR seconds; a click opens the journal on it.
+J.TOAST_FOR = 10
+function J.Toast(e, words)
+  local t = J.toast
+  if not t then
+    t = CreateFrame("Button", nil, UIParent)
+    t:SetSize(360, 44)
+    t:SetPoint("TOP", UIParent, "TOP", 0, -120)
+    t:SetFrameStrata("DIALOG")
+    local b = tex(t, "BACKGROUND", "bg", 0.92)
+    b:SetAllPoints()
+    t.title = label(t, "GameFontNormal", 10, -6)
+    t.line = label(t, "GameFontHighlightSmall", 10, -24)
+    t:SetScript("OnClick", function(self) self:Hide() J.Select(self.entry) J.Show() end)
+    J.toast = t
+  end
+  t.entry = e
+  t.title:SetText(T.text("gold", J.Clip(words or "", 340, 12)))
+  t.line:SetText(J.Clip(M.Word(e.reason) .. "  " .. tostring(e.detail or ""), 340, 10))
+  t:Show()
+  if C_Timer and C_Timer.After then C_Timer.After(J.TOAST_FOR, function() if t.entry == e then t:Hide() end end) end
+  return t
+end
+
+--- THE GROUP PHOTO's countdown: a big number in the middle of the screen; nil takes it away.
+function J.Count(n)
+  local c = J.counter
+  if not c then
+    c = CreateFrame("Frame", nil, UIParent)
+    c:SetSize(240, 120)
+    c:SetPoint("CENTER", UIParent, "CENTER", 0, 140)
+    c:SetFrameStrata("FULLSCREEN_DIALOG")
+    c.big = c:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    c.big:SetPoint("CENTER", 0, 10)
+    c.small = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    c.small:SetPoint("TOP", c.big, "BOTTOM", 0, -8)
+    J.counter = c
+  end
+  if not n then c:Hide() return nil end
+  if c.big.SetFont and STANDARD_TEXT_FONT then pcall(c.big.SetFont, c.big, STANDARD_TEXT_FONT, 64, "THICKOUTLINE") end
+  c.big:SetText(T.text("gold", tostring(n)))
+  c.small:SetText("group photo - say cheese!")
+  c:Show()
+  return c
 end

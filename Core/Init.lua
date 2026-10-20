@@ -13,6 +13,8 @@ local ADDON, ns = ...
 
 local HEX = {
   ink = "ece8f6", muted = "968ead", accent = "b980ff", good = "4fd0cf", warn = "f08cb0", gold = "e5c04a",
+  -- the ground colours, for the journal (0.9.0): BiSTheme's own names and values
+  bg = "121020", surface = "1a1730", sunken = "221d3c", line = "2a2446", line2 = "3a3260", ink2 = "c6bedd",
 }
 local T = {}
 ns.T = T
@@ -83,7 +85,9 @@ function ns.MirrorIn()
   -- at every login and every place they knew was "new" again (Arn, 24 Sep: "too many screenshots
   -- of places that i have already been at"). The two lists are merged on their own, first, and
   -- merged rather than replaced: neither copy is more right about a place than the other.
-  if type(char) == "table" and type(char.zones) == "table" then
+  -- (only before 0.9.0's per-character books: after them, an old mirror's shared list must not come back
+  -- and be handed out a second time - Memories.lua M.Inherit)
+  if type(char) == "table" and type(char.zones) == "table" and not (type(acct) == "table" and type(acct.chars) == "table") then
     BiSMemoriesDB = type(acct) == "table" and acct or {}
     acct = BiSMemoriesDB
     acct.zones = type(acct.zones) == "table" and acct.zones or {}
@@ -118,12 +122,20 @@ f:RegisterEvent("ADDON_LOADED")
 f:RegisterEvent("PLAYER_LOGOUT")
 f:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == ADDON then
+    -- WHICH COPY CAME BACK (0.9.0, `/bism db`): the stamp each file was saved with, read before anything
+    -- touches them. Two answers tell "the client never read it" from "our write never landed" - and
+    -- once the account-wide one comes back on Forever every time, the second copy can go.
+    ns.dbSeen = {
+      acct = type(BiSMemoriesDB) == "table" and BiSMemoriesDB.stamp or nil,
+      char = type(BiSMemoriesCharDB) == "table" and BiSMemoriesCharDB.stamp or nil,
+    }
     ns.rescued = ns.MirrorIn()                       -- before db(), so the log is there to find
     db()
     ns.Comm.Boot()
     if ns.M and ns.M.Start then ns.M.Start() end     -- the camera, once the DB exists
   elseif event == "PLAYER_LOGOUT" then
     ns.Comm.Save()
+    db().stamp = time and time() or 0                -- read back at the next login (`/bism db`)
     ns.MirrorOut()                                   -- the copy this client will actually give back
   end
 end)

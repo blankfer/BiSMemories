@@ -94,6 +94,12 @@
   .find .clear { color: var(--muted); cursor: pointer; font-size: 13px; text-decoration: underline; }
   .find .clear:hover { color: var(--ink); }
   .nohits { color: var(--muted); padding: 40px 0; text-align: center; }
+  /* WHO AND THE YEAR (0.9.0): every note says whose memory it is, so the album can show one
+     character's, and a line adds up the year the way /bism year does */
+  .find select { font: inherit; color: var(--ink); background: #241f30; border: 1px solid #4a4458;
+                 border-radius: 6px; padding: 6px 9px; }
+  .year { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .year b { color: var(--ink); font-weight: 600; }
   /* the whole page is a drop target, because the button is unavoidable and dragging is kinder */
   body.dropping::after { content: "Drop your Screenshots folder"; position: fixed; inset: 0;
                          display: flex; align-items: center; justify-content: center;
@@ -122,9 +128,11 @@
   </div>
   <div class="find" id="find" style="display:none">
     <input type="search" id="q" placeholder="search a zone, a boss, an item&hellip;" autocomplete="off">
+    <select id="who" style="display:none"></select>
     <div class="tally" id="tally"></div>
     <span class="clear" id="clear" style="display:none">show everything</span>
   </div>
+  <div class="year" id="year" style="display:none"></div>
 </header>
 
 <main>
@@ -180,6 +188,12 @@ var notes = {};      // filename (no extension) -> note from the addon
 var at = -1;         // which one the lightbox is showing, as an index into VIEW
 var query = "";      // what is typed in the search box, lowercased
 var reason = null;   // one trigger, when a count has been clicked
+var who = "";        // one character's memories ("" = everyone's), from the picker
+// THE KINDS IN PLAIN WORDS - the same words as the game's journal (Core/Memories.lua M.WORDS)
+var WORDS = { levelup: "Level up", boss: "Boss", loot: "Loot", achievement: "Achievement", death: "Death",
+              duel: "Duel", zone: "New place", exalted: "Exalted", candid: "Candid", first: "First",
+              gamba: "Gamba", group: "Group photo", manual: "By hand" };
+function word(r) { return WORDS[r] || r || ""; }
 
 // WoWScrnShot_091926_165152.jpg -> 19 Sep 2026, 16:51:52. The client names them MMDDYY_HHMMSS,
 // which is the only date we get: a file's "last modified" is when it was copied, not when it was
@@ -286,7 +300,7 @@ function readNotes(text) {
     if (!block) continue;
     out[m[1].replace(/\.[a-z]+$/i, "")] = {
       zone: get(block, "zone"), detail: get(block, "detail"),
-      reason: get(block, "reason"), level: get(block, "level")
+      reason: get(block, "reason"), level: get(block, "level"), char: get(block, "char")
     };
   }
   return out;
@@ -297,12 +311,13 @@ function readNotes(text) {
 // remember. A picture with no note is still findable by its date.
 function haystack(s) {
   var n = s.note || {};
-  return [s.name, clock(s.at) || "", n.reason || "", n.zone || "", n.level ? "level " + n.level : "",
+  return [s.name, clock(s.at) || "", n.reason || "", word(n.reason), n.char || "", n.zone || "", n.level ? "level " + n.level : "",
           pretty(n.detail || "").replace(/<[^>]*>/g, "")].join(" ").toLowerCase();
 }
 
 function matches(s) {
   if (reason && (!s.note || s.note.reason !== reason)) return false;
+  if (who && (!s.note || s.note.char !== who)) return false;
   if (!query) return true;
   return haystack(s).indexOf(query) !== -1;
 }
@@ -322,11 +337,50 @@ function tally() {
   order.sort(function (a, b) { return counts[b] - counts[a]; });
   order.forEach(function (r) {
     var b = document.createElement("button");
-    b.innerHTML = "<b>" + counts[r] + "</b> " + esc(r);
+    b.innerHTML = "<b>" + counts[r] + "</b> " + esc(word(r).toLowerCase());
     if (reason === r) b.className = "on";
     b.onclick = function () { reason = (reason === r) ? null : r; render(); };
     box.appendChild(b);
   });
+}
+
+// WHOSE MEMORIES: a picker built from the characters the notes name (0.9.0 notes say who; older
+// notes say nothing, and show under "everyone" only)
+function people() {
+  var sel = document.getElementById("who"), seen = {}, list = [], i, c;
+  for (i = 0; i < shots.length; i++) {
+    c = shots[i].note && shots[i].note.char;
+    if (c && !seen[c]) { seen[c] = true; list.push(c); }
+  }
+  list.sort();
+  if (list.length < 2) { sel.style.display = "none"; if (!seen[who]) who = ""; return; }
+  sel.style.display = "";
+  sel.innerHTML = '<option value="">every character</option>' + list.map(function (n) {
+    return '<option value="' + esc(n) + '"' + (n === who ? " selected" : "") + ">" + esc(n.replace(/-.*$/, "")) + "</option>";
+  }).join("");
+  sel.onchange = function () { who = sel.value; render(); };
+}
+
+// THE YEAR SO FAR, the way /bism year adds it up: this year's pictures with a note, for whoever is picked
+function year() {
+  var box = document.getElementById("year"), y = new Date().getFullYear(), n = 0, firsts = 0, levels = 0,
+      places = 0, deaths = 0, i, s;
+  for (i = 0; i < shots.length; i++) {
+    s = shots[i];
+    if (!s.note || !s.at || s.at.getFullYear() !== y || (who && s.note.char !== who)) continue;
+    n++;
+    if (s.note.reason === "boss" && /^first kill: /.test(s.note.detail || "")) firsts++;
+    else if (s.note.reason === "levelup") levels++;
+    else if (s.note.reason === "zone") places++;
+    else if (s.note.reason === "death") deaths++;
+  }
+  if (!n) { box.style.display = "none"; return; }
+  box.style.display = "";
+  box.innerHTML = "<b>" + y + ":</b> " + n + " memories" +
+    (levels ? " &middot; " + levels + " level" + (levels === 1 ? "" : "s") : "") +
+    (firsts ? " &middot; " + firsts + " first kill" + (firsts === 1 ? "" : "s") : "") +
+    (places ? " &middot; " + places + " new place" + (places === 1 ? "" : "s") : "") +
+    (deaths ? " &middot; " + deaths + " death" + (deaths === 1 ? "" : "s") + " worth keeping" : "");
 }
 
 function render() {
@@ -342,6 +396,8 @@ function render() {
   empty.style.display = "none";
   document.getElementById("find").style.display = "";
   tally();
+  people();
+  year();
 
   var withNote = 0, i;
   for (i = 0; i < shots.length; i++) { if (shots[i].note) withNote++; }
@@ -380,7 +436,7 @@ function render() {
 
       var cap = document.createElement("figcaption");
       if (s.note) {
-        cap.innerHTML = '<span class="reason">' + esc(s.note.reason || "") + '</span> ' +
+        cap.innerHTML = '<span class="reason">' + esc(word(s.note.reason)) + '</span> ' +
           '<span class="detail">' + pretty(s.note.detail || "") + '</span>' +
           '<span class="where">' + esc(s.note.zone || "") +
           (s.note.level ? " &middot; level " + esc(s.note.level) : "") + "</span>";

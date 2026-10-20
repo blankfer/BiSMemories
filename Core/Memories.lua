@@ -20,19 +20,27 @@ local ADDON, ns = ...
 local M = {}
 ns.M = M
 
--- What is worth a photograph. Each is a switch in the DB, and `/memories off boss` turns one off.
+-- What is worth a photograph. Each is a switch in the DB, and `/bism off boss` turns one off. `word` is
+-- the kind in plain words (Arn, 21 Oct review: the journal and the album printed "levelup").
 local TRIGGERS = {
-  { key = "levelup",     label = "levelling up",          on = true },
-  { key = "boss",        label = "a boss dying",          on = true },
-  { key = "loot",        label = "rare loot",             on = true },
-  { key = "achievement", label = "an achievement",        on = true },
-  { key = "death",       label = "your own death",        on = true },
-  { key = "duel",        label = "winning a duel",        on = true },
-  { key = "zone",        label = "a zone you have never seen", on = true },
-  { key = "exalted",     label = "going exalted",         on = true },
-  { key = "candid",      label = "one candid a week",     on = true },
+  { key = "levelup",     label = "levelling up",          on = true, word = "Level up" },
+  { key = "boss",        label = "a boss's first kill, or your fastest", on = true, word = "Boss" },
+  { key = "loot",        label = "rare loot",             on = true, word = "Loot" },
+  { key = "achievement", label = "an achievement",        on = true, word = "Achievement" },
+  { key = "death",       label = "a death worth keeping", on = true, word = "Death" },
+  { key = "duel",        label = "winning a duel",        on = true, word = "Duel" },
+  { key = "zone",        label = "a zone you have never seen", on = true, word = "New place" },
+  { key = "exalted",     label = "going exalted",         on = true, word = "Exalted" },
+  { key = "candid",      label = "one candid a week",     on = true, word = "Candid" },
+  { key = "first",       label = "firsts: a mount, riding", on = true, word = "First" },
+  { key = "gamba",       label = "your biggest gamba win", on = true, word = "Gamba" },
+  { key = "group",       label = "group photos",          on = true, word = "Group photo" },
 }
 M.TRIGGERS = TRIGGERS
+M.WORDS = { manual = "By hand" }
+for _, t in ipairs(TRIGGERS) do M.WORDS[t.key] = t.word end
+--- A kind as people read it ("Level up"), whatever key the note carries.
+function M.Word(reason) return M.WORDS[reason or ""] or tostring(reason or "?") end
 
 local DEFAULTS = {
   sound = true,       -- a click, so you know it fired (the client only clicks for PrintScreen)
@@ -43,11 +51,77 @@ local DEFAULTS = {
   candidWindow = 45 * 60,           -- taken at a random moment inside this much play, not on login
   lootQuality = 4,    -- 4 = epic. 3 = rare, if you want more of them
   gems = false,       -- a gem is a component, not a keepsake (4 Oct 2026, Black Temple)
+  clean = true,       -- the interface hidden for the instant of the shot (M.Clean)
+  bossEvery = false,  -- true: every kill, as before 0.9.0; false: the first, and a fastest yet
+  deathEvery = false, -- true: every death; false: the ones worth keeping (M.DeathWorthy)
+  onThisDay = true,   -- at login: "a year ago today..." (M.OnThisDay)
+  pins = "mine",      -- the world map's pins: "mine" (this character's), "all", "off"
 }
 for _, t in ipairs(TRIGGERS) do DEFAULTS[t.key] = t.on end
 for k, v in pairs(DEFAULTS) do ns.DEFAULTS[k] = v end
 
 local function db() return ns.DB() end
+local plain     -- below (a value the client may hide, made safe); declared here, used from here on
+local realZone  -- below too
+
+--------------------------------------------------------------- whose memory --
+-- EACH CHARACTER HAS THEIR OWN (Arn, 21 Oct review). The log is the account's - one album, every
+-- character in it - but a note never said WHO, so a year on the main's Ragnaros and the alt's looked the
+-- same; and "a zone you have never seen" asked the whole account, so an alt never had a first time
+-- anywhere the main had been. Now every note carries the character, and what a character has seen,
+-- killed and done first is kept under their own name (d.chars[key]).
+
+--- This character's key, "Name-Realm", or nil while the client still calls them "Unknown". Kept once
+--- known: a name does not change mid-session.
+function M.Me()
+  if M.me then return M.me end
+  local name = plain(UnitName and UnitName("player"))
+  local realm = plain(GetRealmName and GetRealmName())
+  if type(name) ~= "string" or name == "" or name == (UNKNOWNOBJECT or "Unknown") then return nil end
+  M.me = name .. "-" .. (type(realm) == "string" and realm ~= "" and realm or "?")
+  return M.me
+end
+
+--- This character's own book: { zones = {}, bosses = { [name] = { kills, best } }, firsts = {}, gambaBest }.
+--- A nameless moment gets a throwaway one, so nothing is filed under the wrong person.
+function M.Char()
+  local key = M.Me()
+  if not key then
+    M.nobody = M.nobody or { zones = {}, bosses = {}, firsts = {} }
+    return M.nobody
+  end
+  local d = db()
+  d.chars = type(d.chars) == "table" and d.chars or {}
+  local c = d.chars[key]
+  if type(c) ~= "table" then
+    c = { zones = {}, bosses = {}, firsts = {} }
+    d.chars[key] = c
+    M.Inherit(c)
+  end
+  c.zones = type(c.zones) == "table" and c.zones or {}
+  c.bosses = type(c.bosses) == "table" and c.bosses or {}
+  c.firsts = type(c.firsts) == "table" and c.firsts or {}
+  return c
+end
+
+--- THE OLD SHARED LIST OF PLACES goes to one character only: the one who most likely made it. Before
+--- 0.9.0 every place went on one list for the whole account; given to everyone, an alt would never have a
+--- first time anywhere the main had been, and given to nobody, the main would photograph home again.
+--- The notes say which levels the account played at: a character at (or near) the highest of them is
+--- the main, and takes the list. Everyone else starts their own map from nothing.
+function M.Inherit(c)
+  local d = db()
+  if type(d.zones) ~= "table" or not next(d.zones) then return false end
+  local top = 0
+  for _, e in ipairs(type(d.log) == "table" and d.log or {}) do
+    if type(e.level) == "number" and e.level > top then top = e.level end
+  end
+  local lvl = plain(UnitLevel and UnitLevel("player")) or 0
+  if type(lvl) ~= "number" or lvl < top - 2 then return false end
+  for name in pairs(d.zones) do c.zones[name] = true end
+  d.zones = nil                                    -- claimed: one owner, and the shared list is gone
+  return true
+end
 
 -- The client plays its camera click for the PrintScreen key, not for Screenshot() -- so a shot
 -- taken by an addon is silent, and silence is indistinguishable from "it did not work". We make
@@ -81,9 +155,6 @@ local function shotStem()
   local stamp = date and date("%m%d%y_%H%M%S") or tostring(time and time() or 0)
   return "WoWScrnShot_" .. stamp
 end
-
-local plain   -- below; a zone name is compared here, and a hidden one must not be
-local realZone  -- below too, and used by M.Shoot which is written before it
 
 local function where()
   local zone = plain((GetRealZoneText and GetRealZoneText()) or (GetZoneText and GetZoneText())) or "?"
@@ -138,9 +209,71 @@ M.log = nil            -- set from the DB on login; kept here so tests can read 
 
 local lastShot = 0
 
+--- WHAT YOU WORE: the item ids in each slot, for the journal's postcard (Journal.lua dresses you in
+--- them again). Ids only - a link is long, and the id is all a model needs.
+M.SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10, 15, 16, 17, 18, 19 }   -- the slots a model shows (no neck, rings, trinkets)
+function M.Gear()
+  if not GetInventoryItemLink then return nil end
+  local out, n = {}, 0
+  for _, slot in ipairs(M.SLOTS) do
+    local ok, link = pcall(GetInventoryItemLink, "player", slot)
+    link = ok and plain(link)
+    local id = type(link) == "string" and tonumber(link:match("item:(%d+)"))
+    if id then out[slot] = id n = n + 1 end
+  end
+  return n > 0 and out or nil
+end
+
+--- WHERE ON THE MAP: the client's map and your spot on it, out in the world (inside an instance the
+--- client gives none, and the zone's name is the note).
+function M.Spot()
+  local CM = C_Map
+  if not (CM and CM.GetBestMapForUnit and CM.GetPlayerMapPosition) then return nil end
+  local okM, map = pcall(CM.GetBestMapForUnit, "player")
+  map = okM and plain(map)
+  if type(map) ~= "number" then return nil end
+  local okP, pos = pcall(CM.GetPlayerMapPosition, map, "player")
+  if not (okP and pos and pos.GetXY) then return nil end
+  local okX, x, y = pcall(pos.GetXY, pos)
+  if not okX then return nil end
+  x = plain(x)
+  y = plain(y)
+  if type(x) ~= "number" or type(y) ~= "number" or (x == 0 and y == 0) then return nil end
+  return map, math.floor(x * 10000 + 0.5) / 10000, math.floor(y * 10000 + 0.5) / 10000
+end
+
+--- A creature's npc id from its GUID ("Creature-0-...-npcID-spawn"), or nil.
+function M.NpcOf(guid)
+  guid = plain(guid)
+  if type(guid) ~= "string" then return nil end
+  local kind, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)")
+  if kind == "Creature" or kind == "Vehicle" then return tonumber(id) end
+  return nil
+end
+
+--- CLEAN SHOTS (Arn's yes, 21 Oct review): the interface hidden for the instant of the shot, the way
+--- Alt+Z hides it (SetUIVisibility - the client's own, allowed in a fight), and back the moment the
+--- client says the picture is written - or after M.CLEAN_BACK seconds, whatever happens.
+M.CLEAN_BACK = 2
+function M.Clean(on)
+  if not SetUIVisibility then return false end
+  if on then
+    if M.uiHidden then return true end
+    if not pcall(SetUIVisibility, false) then return false end
+    M.uiHidden = true
+    if C_Timer and C_Timer.After then C_Timer.After(M.CLEAN_BACK, function() M.Clean(false) end) end
+    return true
+  end
+  if not M.uiHidden then return false end
+  M.uiHidden = nil
+  pcall(SetUIVisibility, true)
+  return true
+end
+
 --- Take one, and write down why. Returns the entry, or nil and the reason it did not.
 --- `from` is the asking addon's name, for a memory asked for through API.lua (else nil).
-function M.Shoot(reason, detail, from)
+--- `extra`: fields for the note beyond the usual (a level that has just changed, a boss's npc id...).
+function M.Shoot(reason, detail, from, extra)
   local d = db()
   if d[reason] == false then return nil, "off" end
   local now = (GetTime and GetTime()) or 0
@@ -151,6 +284,10 @@ function M.Shoot(reason, detail, from)
   -- candid - the zone goes on the list, so it is never later mistaken for somewhere new.
   M.SeeZone(realZone())
 
+  -- (each asked on its own line: `UnitClass and UnitClass(...)` keeps one answer, and the token is the second)
+  local class, race
+  if UnitClass then class = select(2, UnitClass("player")) end
+  if UnitRace then race = select(2, UnitRace("player")) end
   local entry = {
     reason = reason,
     detail = detail,
@@ -159,10 +296,17 @@ function M.Shoot(reason, detail, from)
     at = (time and time()) or 0,
     with = party(),
     from = from,
+    char = M.Me(),
+    class = plain(class),
+    race = plain(race),
+    gear = M.Gear(),
   }
+  entry.map, entry.x, entry.y = M.Spot()
+  for k, v in pairs(type(extra) == "table" and extra or {}) do entry[k] = v end
 
   local function capture()
     entry.file = shotStem()
+    if d.clean then M.Clean(true) end
     if Screenshot then pcall(Screenshot) end
     click()
     -- other addons hear it here, at the shutter, so the file name is on the note they get (API.lua)
@@ -177,8 +321,9 @@ function M.Shoot(reason, detail, from)
   local log = M.Log()
   table.insert(log, 1, entry)
   for i = #log, (d.keep or 250) + 1, -1 do log[i] = nil end
-  -- an open journal follows along rather than going stale behind you
+  -- an open journal follows along rather than going stale behind you; the map's pins too
   if ns.J and ns.J.Touch then ns.J.Touch() end
+  if ns.Pins and ns.Pins.Update then pcall(ns.Pins.Update) end
   return entry
 end
 
@@ -283,13 +428,16 @@ function M.LootWorthy(msg)
   if not link then return nil end
   local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   if not getInfo then return nil end
+  -- MINE FIRST, a string match that asks the client nothing: in a 40-man most loot lines are other
+  -- people's, and for those only a legendary matters - one question, then done (the cost budget holds it)
+  local mine = M.LootIsMine(msg)
   local ok, _, _, quality = pcall(getInfo, link)
   if not ok or type(quality) ~= "number" then return nil end
+  if not mine and quality < 5 then return nil end
   -- BEFORE the legendary line, deliberately: a legendary gem would still be a gem, and the point
   -- of the switch is that gems are not what anyone opens an album for
   if not db().gems and isGem(link) then return nil end
   if quality >= 5 then return link, quality end      -- a legendary is everyone's news
-  if not M.LootIsMine(msg) then return nil end
   if quality < (db().lootQuality or 4) then return nil end
   return link, quality
 end
@@ -354,10 +502,9 @@ end
 function M.SeeZone(name)
   name = plain(name)
   if type(name) ~= "string" or name == "" or name == "?" then return nil end
-  local d = db()
-  d.zones = type(d.zones) == "table" and d.zones or {}
-  if d.zones[name] then return nil end
-  d.zones[name] = true
+  local zones = M.Char().zones                      -- this character's map, not the account's (0.9.0)
+  if zones[name] then return nil end
+  zones[name] = true
   return name
 end
 
@@ -382,8 +529,7 @@ local ZONE_MAX = 3
 function M.NewZone(name)
   name = plain(name)
   if type(name) ~= "string" or name == "" then return nil end
-  local d = db()
-  local known = type(d.zones) == "table" and next(d.zones) ~= nil
+  local known = next(M.Char().zones) ~= nil
   if not M.SeeZone(name) then return nil, "been here" end
   if not known then return nil, "the first place it ever saw" end
   if M.zoneShots >= ZONE_MAX then return nil, "enough new places for one session" end
@@ -447,16 +593,180 @@ end
 
 --- Exalted. The standing's own name comes from the client (FACTION_STANDING_LABEL8), so this does
 --- not hard-code the English word.
+---
+--- TWO PLACES IT CAN SAY SO (21 Oct review): the reputation line on CHAT_MSG_COMBAT_FACTION_CHANGE,
+--- and the standing line - "You are now %s with %s." (FACTION_STANDING_CHANGED) - which the client may
+--- print as a SYSTEM line instead. Which one Forever uses is UNVERIFIED: both are heard (`/bism heard`).
+--- Answers the line to keep: "Exalted with Thunder Bluff" from the standing line, else the line itself.
 function M.WentExalted(msg)
   if type(msg) ~= "string" then return nil end
   local exalted = _G.FACTION_STANDING_LABEL8
-  if type(exalted) ~= "string" or not msg:find(exalted, 1, true) then return nil end
+  if type(exalted) ~= "string" then return nil end
+  local pat, order = M.Pattern(_G.FACTION_STANDING_CHANGED)
+  if pat then
+    local caps = { msg:match(pat) }
+    if #caps > 0 then
+      local args = {}
+      for i, cap in ipairs(caps) do args[order[i] or i] = cap end
+      if args[1] == exalted then return ("%s with %s"):format(exalted, tostring(args[2] or "?")) end
+      return nil                                       -- the standing line, and not exalted
+    end
+  end
+  if not msg:find(exalted, 1, true) then return nil end
   return msg
+end
+
+---------------------------------------------------------------- the bosses --
+-- THE FIRST KILL, AND A FASTEST YET (Arn, 21 Oct review: every kill photographed every week fills the
+-- album with the same boss). A boss is a memory the first time THIS character kills it - and again
+-- only when the kill is the fastest yet, timed from the client's ENCOUNTER_START. `/bism every boss`
+-- (d.bossEvery) puts every kill back.
+M.fights = {}            -- encounter id -> when it started (GetTime), while it lasts
+M.fighting = nil         -- the name of the fight in progress, for a death inside it
+
+function M.BossStart(id, name)
+  id, name = plain(id), plain(name)
+  if id then M.fights[id] = (GetTime and GetTime()) or 0 end
+  M.fighting = type(name) == "string" and name or "a boss"
+end
+
+--- A kill heard (ENCOUNTER_END with success, or BOSS_KILL): the memory to take, or nil and why not.
+--- The two events can both come for one kill: the second, inside M.TWICE seconds, only adds its time.
+M.TWICE = 30
+function M.BossKill(name, id, guid)
+  name = type(name) == "string" and name or "a boss"
+  local now = (GetTime and GetTime()) or 0
+  local started = id and M.fights[id]
+  if id then M.fights[id] = nil end
+  M.fighting = nil
+  local secs = started and math.max(0, now - started) or nil
+  local b = M.Char().bosses
+  local rec = type(b[name]) == "table" and b[name] or nil
+  local npc = M.NpcOf(guid)
+  if rec and rec.at and now - rec.at < M.TWICE and now >= rec.at then
+    if secs and not rec.best then rec.best = secs end          -- the same kill, its time arriving late
+    return nil, "the same kill"
+  end
+  local extra = { npc = npc, secs = secs }
+  if not rec then
+    b[name] = { kills = 1, best = secs, at = now, first = (time and time()) or 0 }
+    return M.Shoot("boss", "first kill: " .. name, nil, extra)
+  end
+  rec.kills, rec.at = (rec.kills or 0) + 1, now
+  if secs and rec.best and secs < rec.best - 1 then
+    rec.best = secs
+    return M.Shoot("boss", ("%s - fastest yet, %d:%02d"):format(name, math.floor(secs / 60), math.floor(secs % 60)), nil, extra)
+  end
+  if secs and not rec.best then rec.best = secs end
+  if db().bossEvery then return M.Shoot("boss", name, nil, extra) end
+  return nil, "killed before"
+end
+
+---------------------------------------------------------------- the deaths --
+-- A DEATH WORTH KEEPING (21 Oct review: one bad night of wipes was a dozen pictures). Kept: a player
+-- killed you, or one of your BiS Tools rivals, or you died in a boss fight, or it is this character's
+-- first death ever. Who killed you comes from the client's death recap (C_DeathRecap - BiS Tools reads
+-- the same, and measured it plain on Forever, 12 Oct). `/bism every death` (d.deathEvery) keeps them all.
+
+--- The killer: name, whether a player, and the npc id - from the recap's newest hit, every field asked.
+function M.Killer()
+  local D = C_DeathRecap
+  if not (D and D.GetRecapEvents) then return nil end
+  local ok, events = pcall(D.GetRecapEvents)
+  if not ok or type(events) ~= "table" or plain(events) == nil then return nil end
+  local hit = events[1]
+  if type(hit) ~= "table" or plain(hit) == nil then return nil end
+  local okN, name = pcall(function() return plain(hit.sourceName) end)
+  local okG, guid = pcall(function() return plain(hit.sourceGUID) end)
+  name = okN and type(name) == "string" and name or nil
+  guid = okG and type(guid) == "string" and guid or nil
+  if not name then return nil end
+  return name, guid and guid:find("^Player%-") ~= nil or false, M.NpcOf(guid)
+end
+
+--- Is this name one of your rivals in BiS Tools? Asked through its API (version 2), never its insides.
+function M.Rival(name)
+  local api = rawget(_G, "BiSToolsAPI")
+  if type(api) ~= "table" or api.major ~= 1 or type(api.IsRival) ~= "function" then return false end
+  local ok, yes = pcall(api.IsRival, name)
+  return ok and yes == true
+end
+
+--- The death's memory, or nil and why not.
+function M.Death()
+  local c = M.Char()
+  local first = not c.firsts.death
+  c.firsts.death = c.firsts.death or ((time and time()) or 0)
+  local killer, isPlayer, npc = M.Killer()
+  local extra = { killer = killer, npc = npc }
+  if killer and M.Rival(killer) then return M.Shoot("death", "killed by your rival " .. killer, nil, extra) end
+  if killer and isPlayer then return M.Shoot("death", "killed by " .. killer, nil, extra) end
+  if M.fighting then return M.Shoot("death", "died fighting " .. M.fighting, nil, extra) end
+  if first then return M.Shoot("death", "your first death" .. (killer and (" - " .. killer) or ""), nil, extra) end
+  if db().deathEvery then return M.Shoot("death", killer and ("killed by " .. killer) or where(), nil, extra) end
+  return nil, "not a death worth keeping"
+end
+
+---------------------------------------------------------------- the firsts --
+-- FIRSTS (21 Oct review): a new mount, and learning to ride. Which event this client sends for a mount
+-- is UNVERIFIED (NEW_MOUNT_ADDED on a client with a mount journal, COMPANION_LEARNED on one with
+-- companions): both are heard, and `/bism heard` says which came. Riding by its spells' ids (TBC's:
+-- Apprentice 33388, Journeyman 33391, Expert 34090, Artisan 34091 - UNVERIFIED on Forever), or a learnt
+-- spell whose name says Riding.
+M.RIDING = { [33388] = true, [33391] = true, [34090] = true, [34091] = true }
+M.LEVEL_CAP = 60
+
+function M.Mount()
+  local c = M.Char()
+  local first = not c.firsts.mount
+  c.firsts.mount = c.firsts.mount or ((time and time()) or 0)
+  return M.Shoot("first", first and "your first mount" or "a new mount")
+end
+
+function M.Learnt(spellID)
+  spellID = plain(spellID)
+  if type(spellID) ~= "number" then return nil, "no spell" end
+  local name
+  local getName = (C_Spell and C_Spell.GetSpellName) or GetSpellInfo
+  if getName then
+    local ok, n = pcall(getName, spellID)
+    name = ok and plain(n)
+  end
+  local riding = M.RIDING[spellID] or (type(name) == "string" and name:find("Riding", 1, true))
+  if not riding then return nil, "not riding" end
+  local c = M.Char()
+  local key = "riding" .. spellID
+  if c.firsts[key] then return nil, "learnt before" end
+  c.firsts[key] = (time and time()) or 0
+  return M.Shoot("first", "learned to ride" .. (type(name) == "string" and (" - " .. name) or ""))
+end
+
+---------------------------------------------------------------- the gamba --
+-- YOUR BIGGEST WIN (21 Oct review): BiS Gamba tells every listener when a round is settled
+-- (BiSGambaAPI, "BiSGamba_RoundEnded"); a win bigger than any this character had before is a memory.
+function M.GambaRound(p)
+  if type(p) ~= "table" then return nil, "no round" end
+  local me = plain(UnitName and UnitName("player"))
+  local winner, amount = p.winner, tonumber(p.amount)
+  if type(winner) ~= "string" or type(me) ~= "string" or not amount or amount <= 0 then return nil, "no win" end
+  if winner ~= me and not winner:find("^" .. me:gsub("(%W)", "%%%1") .. "[%- ]") then return nil, "not yours" end
+  local c = M.Char()
+  if amount <= (tonumber(c.gambaBest) or 0) then return nil, "won bigger before" end
+  c.gambaBest = amount
+  return M.Shoot("gamba", ("won %dg from %s - your biggest yet"):format(amount, tostring(p.loser or "?")))
+end
+
+function M.HookGamba()
+  local api = rawget(_G, "BiSGambaAPI")
+  if M.gambaHooked or type(api) ~= "table" or api.major ~= 1 or type(api.RegisterCallback) ~= "function" then return false end
+  M.gambaHooked = pcall(api.RegisterCallback, ADDON, "BiSGamba_RoundEnded", function(_, p) M.GambaRound(p) end) and true
+  return M.gambaHooked
 end
 
 local EVENTS = {
   "PLAYER_LEVEL_UP", "PLAYER_LEVEL_CHANGED",     -- the old name and the modern one
-  "BOSS_KILL", "ENCOUNTER_END",
+  "BOSS_KILL", "ENCOUNTER_START", "ENCOUNTER_END",
+  "NEW_MOUNT_ADDED", "COMPANION_LEARNED", "LEARNED_SPELL_IN_TAB",
   "CHAT_MSG_LOOT", "ACHIEVEMENT_EARNED", "PLAYER_DEAD",
   "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS",
   "CHAT_MSG_SYSTEM", "CHAT_MSG_COMBAT_FACTION_CHANGE",
@@ -544,17 +854,32 @@ end
 --- The decision itself, with no note-keeping in it.
 function M.Decide(event, ...)
   if event == "PLAYER_LEVEL_UP" or event == "PLAYER_LEVEL_CHANGED" then
-    local lvl = select(1, ...)
-    return M.Shoot("levelup", "level " .. tostring(lvl or (UnitLevel and UnitLevel("player")) or "?"))
+    -- THE NEW LEVEL (21 Oct review): PLAYER_LEVEL_UP says it first; PLAYER_LEVEL_CHANGED says the OLD
+    -- level first and the new one second - reading its first answer wrote "level 9" on the ding to 10
+    local lvl = event == "PLAYER_LEVEL_CHANGED" and select(2, ...) or select(1, ...)
+    lvl = tonumber(lvl) or plain(UnitLevel and UnitLevel("player"))
+    local detail = "level " .. tostring(lvl or "?")
+    if lvl == M.LEVEL_CAP then detail = ("level %d - the top!"):format(lvl) end
+    return M.Shoot("levelup", detail, nil, { level = tonumber(lvl) })
+
+  elseif event == "ENCOUNTER_START" then
+    local id, name = ...
+    M.BossStart(id, name)
+    return nil, "a fight begins"
 
   elseif event == "BOSS_KILL" then
-    local _, name = ...
-    return M.Shoot("boss", tostring(name or "a boss"))
+    local id, name = ...
+    return M.BossKill(name, id, UnitGUID and UnitGUID("target"))
 
   elseif event == "ENCOUNTER_END" then
-    local _, name, _, _, success = ...
-    if success ~= 1 and success ~= true then return nil, "wipe" end   -- a wipe is not a memory
-    return M.Shoot("boss", tostring(name or "an encounter"))
+    local id, name, _, _, success = ...
+    if success ~= 1 and success ~= true then                          -- a wipe is not a memory
+      if id then M.fights[id] = nil end
+      M.fighting = nil
+      return nil, "wipe"
+    end
+    local guid = (UnitGUID and (UnitGUID("boss1") or UnitGUID("target"))) or nil
+    return M.BossKill(name, id, guid)
 
   elseif event == "CHAT_MSG_LOOT" then
     local msg = select(1, ...)
@@ -572,7 +897,16 @@ function M.Decide(event, ...)
     return M.Shoot("achievement", tostring(name or id or "?"))
 
   elseif event == "PLAYER_DEAD" then
-    return M.Shoot("death", where())
+    return M.Death()
+
+  elseif event == "NEW_MOUNT_ADDED" or event == "COMPANION_LEARNED" then
+    if event == "COMPANION_LEARNED" and select(1, ...) ~= nil and select(1, ...) ~= "MOUNT" then
+      return nil, "a companion, not a mount"
+    end
+    return M.Mount()
+
+  elseif event == "LEARNED_SPELL_IN_TAB" then
+    return M.Learnt(select(1, ...))
 
   elseif event == "ZONE_CHANGED_NEW_AREA" then
     local zone, why = M.NewZone(realZone())
@@ -587,9 +921,14 @@ function M.Decide(event, ...)
     return nil, learnt and ("noted " .. learnt) or "already known"
 
   elseif event == "CHAT_MSG_SYSTEM" then
-    local loser = M.DuelWon(select(1, ...))
-    if not loser then return nil, "not a duel win" end
-    return M.Shoot("duel", "beat " .. tostring(loser))
+    local msg = select(1, ...)
+    local loser = M.DuelWon(msg)
+    if loser then return M.Shoot("duel", "beat " .. tostring(loser)) end
+    local exalted = M.WentExalted(msg)                -- the standing line can come as a system line
+    if exalted and msg:find(_G.FACTION_STANDING_LABEL8 or "\0", 1, true) and exalted ~= msg then
+      return M.Shoot("exalted", exalted)
+    end
+    return nil, "not a duel win"
 
   elseif event == "CHAT_MSG_COMBAT_FACTION_CHANGE" then
     local line = M.WentExalted(select(1, ...))
@@ -599,11 +938,14 @@ function M.Decide(event, ...)
   elseif event == "PLAYER_ENTERING_WORLD" then
     M.SeeZone(realZone())             -- wherever you logged in or zoned to, known from now on
     M.ArmCandid()                     -- a week up? book a moment somewhere in this session
+    M.HookGamba()                     -- BiS Gamba's rounds, when it is installed
+    if M.OnThisDay then M.OnThisDay() end    -- once a day: "a year ago today..."
     return nil, "candid considered"
 
   elseif event == "SCREENSHOT_SUCCEEDED" or event == "SCREENSHOT_FAILED" then
     local entry = M.Log()[1]
     if entry then entry.shot = (event == "SCREENSHOT_SUCCEEDED") end
+    M.Clean(false)                    -- the picture is written: the interface comes back
     return nil, "noted"
   end
   return nil, "ignored"

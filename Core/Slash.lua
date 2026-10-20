@@ -16,6 +16,14 @@
       /bism journal             the album in game: what happened, newest first. No pictures -
                                 an addon cannot list a folder, and cannot draw a .jpg. See
                                 Core/Journal.lua for why that is not a Forever thing.
+      /bism map                 the journal's map: a dot where each memory was taken
+      /bism year [all]          what this year's notes add up to (all: every character)
+      /bism group [secs]        a group photo: a countdown for everyone with a BiS addon
+      /bism options             the options window (or right-click the minimap button)
+      /bism every boss|death    every kill / every death again, not just the ones worth keeping
+      /bism pins mine|all|off   the world map's pins
+      /bism onthisday · clean   on this day on/off; hide the interface for the picture on/off
+      /bism db                  which saved copy came back at this login
 
   Reading it back matters as much as taking it: the note names the file the client wrote, so a
   picture in Screenshots\ can be matched to the night it came from.
@@ -34,7 +42,7 @@ local function line(e)
   local who = (e.with and #e.with > 0) and (", with " .. #e.with) or ""
   return ("%s  %s  %s%s%s"):format(
     T.text("muted", when(e.at)),
-    T.text("accent", e.reason or "?"),
+    T.text("accent", M.Word(e.reason)),
     tostring(e.detail or ""),
     T.text("muted", "  " .. tostring(e.zone or "?") .. who),
     e.file and T.text("muted", "  " .. e.file) or "")
@@ -113,8 +121,29 @@ local function set(key, on)
       return true
     end
   end
-  ns.Print("no such thing as %s - try: levelup, boss, loot, achievement, death, duel", tostring(key))
+  local keys = {}
+  for _, t in ipairs(M.TRIGGERS) do keys[#keys + 1] = t.key end
+  ns.Print("no such thing as %s - try: %s", tostring(key), table.concat(keys, ", "))
   return false
+end
+
+--- `/bism db`: which saved copy came back at this login (Init.lua ns.dbSeen).
+local function dbCheck()
+  local seen = ns.dbSeen or {}
+  local function said(stamp)
+    return stamp and T.text("good", "yes, saved " .. when(stamp)) or T.text("warn", "no")
+  end
+  ns.Print("the account-wide file came back: %s", said(seen.acct))
+  ns.Print("the per-character copy came back: %s", said(seen.char))
+  ns.Print("rescued from the per-character copy this login: %s", ns.rescued and T.text("warn", "yes") or "no")
+end
+
+--- `/bism year [all]`: what this year's notes add up to - this character's, or every character's.
+local function year(all)
+  local s = M.Summary(nil, (not all) and M.Me() or nil)
+  for i, l in ipairs(M.SummaryLines(s)) do
+    if i == 1 then ns.Print("%s", T.text("accent", l)) else DEFAULT_CHAT_FRAME:AddMessage("   " .. l) end
+  end
 end
 
 function ns.Slash(input)
@@ -207,6 +236,53 @@ function ns.Slash(input)
   elseif cmd == "journal" or cmd == "album" or cmd == "book" then
     if ns.J then ns.J.Toggle() else ns.Print("the journal is not loaded") end
 
+  elseif cmd == "map" then
+    if ns.J then ns.J.Tab("map") ns.J.Show() end
+
+  elseif cmd == "options" or cmd == "config" or cmd == "settings" then
+    if ns.CFG then ns.CFG.Toggle() else ns.Print("the options are not loaded") end
+
+  elseif cmd == "group" or cmd == "cheese" then
+    local ok, why = M.GroupPhoto(tonumber(rest))
+    if not ok then ns.Print("no group photo - %s", tostring(why)) end
+
+  elseif cmd == "year" then
+    year(rest:lower() == "all")
+
+  elseif cmd == "onthisday" then
+    local d = db()
+    d.onThisDay = d.onThisDay == false
+    ns.Print("on this day: %s", d.onThisDay and T.text("good", "on") or T.text("warn", "off"))
+
+  elseif cmd == "every" then
+    -- `/bism every boss` / `/bism every death`: every one, or (again) only the ones worth keeping
+    local what = rest:lower()
+    local key = (what == "boss" and "bossEvery") or (what == "death" and "deathEvery") or nil
+    if not key then ns.Print("every boss, or every death") else
+      local d = db()
+      d[key] = not d[key]
+      ns.Print("%s: %s", what == "boss" and "boss kills" or "deaths",
+        d[key] and T.text("good", "every one") or T.text("muted", "only the ones worth keeping"))
+    end
+
+  elseif cmd == "pins" then
+    local m = rest:lower()
+    if m ~= "mine" and m ~= "all" and m ~= "off" then
+      ns.Print("map pins are %s - /bism pins mine, all or off", ns.Pins and ns.Pins.Mode() or "?")
+    else
+      db().pins = m
+      local n = ns.Pins and ns.Pins.Update() or 0
+      ns.Print("map pins: %s (%d on the map)", m, n)
+    end
+
+  elseif cmd == "clean" then
+    local d = db()
+    d.clean = not d.clean
+    ns.Print("hide the interface for the picture: %s", d.clean and T.text("good", "on") or T.text("warn", "off"))
+
+  elseif cmd == "db" then
+    dbCheck()
+
   -- WHERE THE ALBUM PAGE IS. An addon cannot know its own full path - there is no API for the
   -- install folder and none for the version folder either - so the certain part is printed, and
   -- `/memories wow <folder>` makes it whole and keeps it.
@@ -232,6 +308,7 @@ function ns.Slash(input)
 
   else
     ns.Print("%s", T.text("muted",
-      "/bism · all · now [note] · on|off <thing> · loot <2-5> · gap <secs> · sound · clear · zones · status · heard · journal"))
+      "/bism · all · now [note] · journal · map · year [all] · group · options · on|off <thing> · every boss|death"
+      .. " · pins mine|all|off · onthisday · clean · loot <2-5> · gap <secs> · sound · clear · zones · status · heard · db"))
   end
 end
