@@ -797,6 +797,13 @@ do
   H.ok(page and page:find("Drag your WoW folder onto this page", 1, true)
        and not page:find("Add the addon's notes (optional)", 1, true), "one instruction, not two buttons and an essay")
   H.ok(page and page:find("top: 70px", 1, true) and page:find("z-index: 2", 1, true), "the lightbox's X sits above the side strips")
+  -- "i thought that it froze" / "click this button to make a icon on your desktop" (Arn, 21 Oct 2026)
+  H.ok(page and page:find("function counting(", 1, true) and page:find('id="busy"', 1, true),
+       "a bar that moves while the folder is read, with what it has found so far")
+  H.ok(page and page:find("getAsFileSystemHandle", 1, true) and page:find("indexedDB", 1, true)
+       and page:find("Open my album", 1, true), "the dropped folder is remembered: next time one button")
+  H.ok(page and page:find("[InternetShortcut]", 1, true) and page:find("Make a desktop icon", 1, true),
+       "and a desktop icon that opens the album")
 
   -- THE ACCOUNT FOLDER IS NOT ALWAYS ONE (4 Oct 2026). The page said `<ACCOUNT>` is "a number and
   -- a hash" and that there is "usually only one folder" - and both were wrong on the author's own

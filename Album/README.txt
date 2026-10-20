@@ -20,6 +20,18 @@ notes that were saved most recently.
 Click a picture to see it full size, the arrow keys move between them, Escape or the X closes it.
 
 
+NEXT TIME, NO DRAGGING
+----------------------
+
+In Chrome and Edge the page remembers the folder you dropped. Next time it shows "Open my album":
+one click, and your browser asks whether the page may read the folder - choose "Allow on every
+visit" and from then on the album simply opens. It reads the folder fresh each time, so new
+pictures and the newest notes are always there.
+
+"Make a desktop icon" (at the top, once the album is open) puts a shortcut on your desktop that
+opens this page. Double-click it and you are in your album.
+
+
 FINDING ONE PICTURE
 -------------------
 

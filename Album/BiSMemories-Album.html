@@ -113,6 +113,26 @@
   .found b { color: var(--ink); }
   .found .ok { color: #7fd18b; } .found .no { color: #e8a06b; }
   .small { font-size: 13px; color: var(--muted); }
+  /* WORKING (Arn, 21 Oct 2026: "would have been nice some sort of progress bar of it working i thought that
+     it froze"): a bar that moves while the folder is read, and what it has found so far */
+  .busy { margin: 14px 0 0; max-width: 760px; }
+  .busy .track { height: 6px; border-radius: 3px; background: #2b2733; overflow: hidden; position: relative; }
+  .busy .track i { position: absolute; top: 0; bottom: 0; width: 30%; border-radius: 3px; background: var(--accent);
+                   animation: slide 1.1s ease-in-out infinite; }
+  .busy .track.done i { animation: none; left: 0; width: 100%; }
+  @keyframes slide { 0% { left: -30%; } 100% { left: 100%; } }
+  .busy .what { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .busy .what b { color: var(--ink); }
+  /* THE FOLDER, REMEMBERED: next time one button instead of a drag */
+  .again { margin: 6px 0 0; padding: 22px; border: 1px solid var(--accent); border-radius: 12px; max-width: 760px;
+           background: #221d18; }
+  .again h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+  .again p { margin: 4px 0 12px; color: var(--muted); }
+  .bigbtn { font: inherit; font-size: 16px; font-weight: 600; padding: 11px 20px; border-radius: 8px; cursor: pointer;
+            color: #14121a; background: var(--accent); border: 1px solid var(--accent); }
+  .bigbtn:hover { filter: brightness(1.08); }
+  .link { color: var(--muted); cursor: pointer; text-decoration: underline; font-size: 13px; margin-left: 12px; }
+  .link:hover { color: var(--ink); }
   .small summary { cursor: pointer; }
   /* the whole page is a drop target, because the button is unavoidable and dragging is kinder */
   body.dropping::after { content: "Drop it - the page finds your pictures and notes"; position: fixed; inset: 0;
@@ -133,8 +153,13 @@
     <label class="btn">Load again
       <input type="file" id="again" webkitdirectory directory multiple>
     </label>
+    <button class="btn" id="icon" type="button" style="display:none" title="A shortcut on your desktop that opens this album">Make a desktop icon</button>
     <span class="count" id="count"></span>
     <div class="kept" id="kept" style="display:none"></div>
+  </div>
+  <div class="busy" id="busy" style="display:none">
+    <div class="track" id="track"><i></i></div>
+    <div class="what" id="what"></div>
   </div>
   <div class="find" id="find" style="display:none">
     <input type="search" id="q" placeholder="search a zone, a boss, an item&hellip;" autocomplete="off">
@@ -147,7 +172,14 @@
 
 <main>
   <div class="empty" id="empty">
-    <div class="drop">
+    <div class="again" id="again-box" style="display:none">
+      <h2>Your album</h2>
+      <p>This page remembers your WoW folder (<b id="again-name"></b>). Your browser may ask once more
+         whether it may read it &mdash; choose <i>Allow on every visit</i> and next time it simply opens.</p>
+      <button class="bigbtn" id="open-saved" type="button">Open my album</button>
+      <span class="link" id="forget-folder">forget the folder</span>
+    </div>
+    <div class="drop" id="drop-box">
       <h2>Drag your WoW folder onto this page</h2>
       <p>Open <code>C:\Program Files (x86)\World of Warcraft</code> in File Explorer and drag the
          <code>_classic_beta_</code> folder here. That is all: the page finds your pictures and the
@@ -581,16 +613,48 @@ function worthWalking(name, depth) {
          || /#\d+$|^\d+#|^[A-Z0-9]+$/.test(name);
 }
 
+/* THE BAR. `P` counts while the folder is read; a timer paints it a few times a second, so a thousand
+   pictures found cost a thousand additions, not a thousand repaints. */
+var P = { folders: 0, pictures: 0, notes: 0, timer: null };
+function busy(text) {
+  var box = document.getElementById("busy");
+  document.getElementById("track").className = "track";
+  box.style.display = "";
+  document.getElementById("what").innerHTML = text;
+}
+function counting(on) {
+  if (P.timer) { clearInterval(P.timer); P.timer = null; }
+  if (!on) return;
+  P.folders = 0; P.pictures = 0; P.notes = 0;
+  var paint = function () {
+    busy("looking through your WoW folder &mdash; <b>" + P.folders + "</b> folders, <b>" + P.pictures +
+         "</b> pictures" + (P.notes ? ", <b>the notes</b>" : "") + " so far");
+  };
+  paint();
+  P.timer = setInterval(paint, 150);
+}
+function idle() {
+  counting(false);
+  document.getElementById("busy").style.display = "none";
+}
+function counted(path) {
+  var k = kindOf(path);
+  if (k === "picture") P.pictures++;
+  else if (k === "notes") P.notes++;
+  return k;
+}
+
 // a dropped directory arrives as an entry tree, not a file list, so it is walked - only where it is worth it
 function walk(entry, out, depth) {
   depth = depth || 0;
   return new Promise(function (done) {
     if (!entry) return done();
     if (entry.isFile) {
-      if (!kindOf(entry.fullPath || entry.name)) return done();
+      if (!counted(entry.fullPath || entry.name)) return done();
       return entry.file(function (f) { f._path = entry.fullPath || f.name; out.push(f); done(); }, done);
     }
     if (!entry.isDirectory || (depth > 0 && !worthWalking(entry.name, depth)) || depth > 7) return done();
+    P.folders++;
     var reader = entry.createReader(), all = [];
     (function more() {
       reader.readEntries(function (batch) {
@@ -623,14 +687,25 @@ function take(files) {
   line.push(notesFiles.length ? '<span class="ok">&#10003;</span> the addon\'s notes'
                               : '<span class="no">&#10007;</span> no notes here (drop the <code>_classic_beta_</code> folder to get them)');
   if (say) say.innerHTML = line.join(" &nbsp; ");
-  var go = function () { if (pics.length) loadFiles(pics); };
-  if (notesFiles.length) readNotesFile(notesFiles[0], go); else go();
+  counting(false);
+  // one paint of "building" before the work that would otherwise hold the page still
+  var go = function () {
+    if (!pics.length) { idle(); return; }
+    busy("building your album &mdash; <b>" + pics.length + "</b> pictures");
+    setTimeout(function () { loadFiles(pics); idle(); }, 30);
+  };
+  if (notesFiles.length) { busy("reading the notes"); readNotesFile(notesFiles[0], go); } else go();
   return { pictures: pics.length, notes: notesFiles.length };
 }
 
 ["pics", "again"].forEach(function (id) {
   var el = document.getElementById(id);
-  if (el) el.addEventListener("change", function (e) { take(Array.prototype.slice.call(e.target.files || [])); });
+  if (el) el.addEventListener("change", function (e) {
+    var files = Array.prototype.slice.call(e.target.files || []);
+    counting(true);
+    files.forEach(function (f) { counted(f.webkitRelativePath || f.name); });
+    setTimeout(function () { take(files); }, 30);
+  });
 });
 
 document.addEventListener("dragover", function (e) {
@@ -644,15 +719,135 @@ document.addEventListener("drop", function (e) {
   e.preventDefault();
   document.body.classList.remove("dropping");
   var items = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.items) || []);
+  // the folder's HANDLE, asked for now (a drop's items are gone once this event returns): it is what lets
+  // the page open the same folder next time without a drag (Chrome and Edge; elsewhere it is simply null)
+  var handles = items.map(function (it) {
+    try { return it.getAsFileSystemHandle ? it.getAsFileSystemHandle() : null; } catch (err) { return null; }
+  }).filter(Boolean);
   var entries = items.map(function (it) {
     return it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
   }).filter(Boolean);
   if (!entries.length) return;
   var out = [];
-  var say = document.getElementById("found");
-  if (say) say.textContent = "looking for your pictures and notes...";
-  Promise.all(entries.map(function (en) { return walk(en, out, 0); })).then(function () { take(out); });
+  counting(true);
+  Promise.all(entries.map(function (en) { return walk(en, out, 0); })).then(function () {
+    var r = take(out);
+    if (r.pictures && handles.length) {
+      Promise.all(handles.map(function (p) { return p.catch(function () { return null; }); })).then(function (hs) {
+        var dir = hs.filter(function (h) { return h && h.kind === "directory"; })[0];
+        if (dir) keepFolder(dir);
+      });
+    }
+  });
 });
+
+/* THE FOLDER, REMEMBERED (Arn, 21 Oct 2026: "once its dragged and dropped how can we save the setting like
+   click this button to make a icon on your desktop to open your album no need to drag and drop no more").
+   A DROPPED folder hands the page a handle it may keep (IndexedDB stores it whole); the next visit asks
+   the browser for read permission with one click, and with "Allow on every visit" the browser stops
+   asking and the album just opens. Chrome and Edge only - elsewhere the drop works as before and this
+   part never shows. (The folder PICKER refuses Program Files on a file:// page - measured 3 Oct - so it
+   is the drop that is remembered, not the button.) */
+var FOLDER_DB = "bism-album", FOLDER_STORE = "folder";
+function folderDb() {
+  return new Promise(function (ok, no) {
+    if (!window.indexedDB) return no(new Error("no IndexedDB"));
+    var r = indexedDB.open(FOLDER_DB, 1);
+    r.onupgradeneeded = function () { r.result.createObjectStore(FOLDER_STORE); };
+    r.onsuccess = function () { ok(r.result); };
+    r.onerror = function () { no(r.error); };
+  });
+}
+function folderDo(mode, fn) {
+  return folderDb().then(function (db) {
+    return new Promise(function (ok) {
+      var t = db.transaction(FOLDER_STORE, mode), req = fn(t.objectStore(FOLDER_STORE));
+      t.oncomplete = function () { ok(req && req.result); };
+      t.onerror = t.onabort = function () { ok(null); };
+    });
+  }).catch(function () { return null; });
+}
+function keepFolder(h) {
+  return folderDo("readwrite", function (s) { return s.put(h, "wow"); }).then(function () {
+    var say = document.getElementById("found");
+    if (say) say.innerHTML += ' &nbsp; <span class="ok">&#10003;</span> remembered for next time';
+    document.getElementById("icon").style.display = "";
+  });
+}
+function savedFolder() { return folderDo("readonly", function (s) { return s.get("wow"); }); }
+function forgetFolder() {
+  folderDo("readwrite", function (s) { return s.delete("wow"); });
+  document.getElementById("again-box").style.display = "none";
+  document.getElementById("drop-box").style.display = "";
+}
+
+// the same walk as a drop's, over a kept handle
+async function walkHandle(h, path, depth, out) {
+  if (h.kind === "file") {
+    if (counted(path)) { var f = await h.getFile(); f._path = path; out.push(f); }
+    return;
+  }
+  if ((depth > 0 && !worthWalking(h.name, depth)) || depth > 7) return;
+  P.folders++;
+  for await (const child of h.values()) await walkHandle(child, path + "/" + child.name, depth + 1, out);
+}
+async function openSaved(h, ask) {
+  var mode = { mode: "read" };
+  var perm = await h.queryPermission(mode);
+  if (perm !== "granted" && ask) perm = await h.requestPermission(mode);
+  if (perm !== "granted") return false;
+  counting(true);
+  var out = [];
+  try { await walkHandle(h, "/" + h.name, 0, out); }
+  catch (err) { idle(); busy("the folder could not be read - drag it onto the page again"); return false; }
+  take(out);
+  return true;
+}
+(function () {
+  if (!window.FileSystemHandle) return;           // a browser without handles: the drop, as before
+  savedFolder().then(function (h) {
+    if (!h || !h.queryPermission) return;
+    document.getElementById("again-name").textContent = h.name;
+    document.getElementById("again-box").style.display = "";
+    document.getElementById("drop-box").style.display = "none";
+    document.getElementById("icon").style.display = "";
+    document.getElementById("open-saved").onclick = function () { openSaved(h, true); };
+    document.getElementById("forget-folder").onclick = forgetFolder;
+    openSaved(h, false);                          // "Allow on every visit": no click at all
+  });
+})();
+
+/* THE DESKTOP ICON: an internet shortcut (.url) to this very page. Saved straight to the desktop where the
+   browser can (showSaveFilePicker, starting in Desktop), downloaded otherwise - then it goes from Downloads
+   to the desktop by hand. Double-click it and the album opens; with the folder remembered, that is all. */
+function shortcut() {
+  return "[InternetShortcut]\r\nURL=" + String(location.href).split("#")[0] + "\r\n";
+}
+document.getElementById("icon").onclick = async function () {
+  var name = "BiS Memories album.url", text = shortcut();
+  if (window.showSaveFilePicker) {
+    try {
+      var fh = await showSaveFilePicker({ suggestedName: name, startIn: "desktop",
+        types: [{ description: "Shortcut", accept: { "application/internet-shortcut": [".url"] } }] });
+      var w = await fh.createWritable();
+      await w.write(text);
+      await w.close();
+      busy('<span class="ok">&#10003;</span> on your desktop: <b>BiS Memories album</b>');
+      document.getElementById("track").className = "track done";
+      return;
+    } catch (err) {
+      if (err && err.name === "AbortError") return;      // they closed the save box: nothing to do
+    }
+  }
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "application/octet-stream" }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  busy("saved to your Downloads folder &mdash; drag <b>BiS Memories album</b> from there onto your desktop");
+  document.getElementById("track").className = "track done";
+};
 
 /* REMEMBERING THE NOTES BETWEEN VISITS (3 Oct 2026).
    Arn: "once the folders are selected is there a way to save the paths in the html".
