@@ -814,7 +814,9 @@ do
        and page:find('"../../../../"', 1, true), "after one drag the page opens the album by itself, from beside it")
   H.ok(page and page:find("function whereAmI(", 1, true) and page:find("where-copy", 1, true),
        "and it says where the game folder is, with a Copy button")
-  H.ok(page and page:find("[InternetShortcut]", 1, true) and page:find("Make a desktop icon", 1, true),
+  -- a .url was held back by Chrome as possibly harmful ("BiS Memories album.download", 21 Oct): a page instead
+  H.ok(page and not page:find("[InternetShortcut]", 1, true) and page:find("function launcher(", 1, true)
+       and page:find('http-equiv="refresh"', 1, true) and page:find("Make a desktop icon", 1, true),
        "and a desktop icon that opens the album")
 
   -- THE ACCOUNT FOLDER IS NOT ALWAYS ONE (4 Oct 2026). The page said `<ACCOUNT>` is "a number and

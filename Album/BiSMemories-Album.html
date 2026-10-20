@@ -894,22 +894,31 @@ function openKept(place) {
   openKept(place);
 })();
 
-/* THE DESKTOP ICON: an internet shortcut (.url) to this very page. Saved straight to the desktop where the
-   browser can (showSaveFilePicker, starting in Desktop), downloaded otherwise - then it goes from Downloads
-   to the desktop by hand. Double-click it and the album opens; with the folder remembered, that is all. */
-function shortcut() {
-  return "[InternetShortcut]\r\nURL=" + String(location.href).split("#")[0] + "\r\n";
+/* THE DESKTOP ICON: a tiny page that sends the browser on to this one. It was a .url shortcut, and Chrome
+   holds a .url back as possibly harmful - Arn's desktop got "BiS Memories album.download", which nothing
+   opens (21 Oct 2026). A page is saved without a word, opens in the browser on a double-click, and moves
+   straight on to this page where it lives - so the relative paths that open the album still work. It also
+   carries a plain link, for a browser that will not move on by itself. Saved straight to the desktop where
+   the browser can (showSaveFilePicker, starting in Desktop), else downloaded. */
+function launcher() {
+  var here = String(location.href).split("#")[0];
+  var safe = here.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">\n' +
+    '<title>BiS Memories album</title>\n' +
+    '<meta http-equiv="refresh" content="0; url=' + safe + '">\n' +
+    '<style>body{background:#14110f;color:#efeae3;font:16px "Segoe UI",sans-serif;padding:40px}a{color:#e8b96b}</style>\n' +
+    '</head><body>Opening your album&hellip; <a href="' + safe + '">open it</a></body></html>\n';
 }
 document.getElementById("icon").onclick = async function () {
-  var name = "BiS Memories album.url", text = shortcut();
+  var name = "BiS Memories album.html", text = launcher();
   if (window.showSaveFilePicker) {
     try {
       var fh = await showSaveFilePicker({ suggestedName: name, startIn: "desktop",
-        types: [{ description: "Shortcut", accept: { "application/internet-shortcut": [".url"] } }] });
+        types: [{ description: "Web page", accept: { "text/html": [".html"] } }] });
       var w = await fh.createWritable();
       await w.write(text);
       await w.close();
-      busy('<span class="ok">&#10003;</span> on your desktop: <b>BiS Memories album</b>');
+      busy('<span class="ok">&#10003;</span> on your desktop: <b>BiS Memories album</b> - double-click it to open your album');
       document.getElementById("track").className = "track done";
       return;
     } catch (err) {
@@ -917,7 +926,7 @@ document.getElementById("icon").onclick = async function () {
     }
   }
   var a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "application/octet-stream" }));
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/html" }));
   a.download = name;
   document.body.appendChild(a);
   a.click();
