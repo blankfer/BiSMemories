@@ -643,7 +643,7 @@ function busy(text) {
 function counting(on) {
   if (P.timer) { clearInterval(P.timer); P.timer = null; }
   if (!on) return;
-  P.folders = 0; P.pictures = 0; P.notes = 0; P.files = 0; P.failed = 0;
+  P.folders = 0; P.pictures = 0; P.notes = 0; P.files = 0; P.failed = 0; P.err = null; P.errAt = null;
   var paint = function () {
     busy("looking through your WoW folder &mdash; <b>" + P.folders + "</b> folders, <b>" + P.pictures +
          "</b> pictures" + (P.notes ? ", <b>the notes</b>" : "") + " so far");
@@ -680,14 +680,20 @@ function walk(entry, out, depth, deep) {
     P.folders++;
     var reader = entry.createReader(), all = [];
     (function more() {
+      var finish = function () {
+        Promise.all(all.map(function (e) { return walk(e, out, depth + 1, deep); })).then(function () { done(); });
+      };
       reader.readEntries(function (batch) {
-        if (!batch.length) {
-          Promise.all(all.map(function (e) { return walk(e, out, depth + 1, deep); })).then(function () { done(); });
-          return;
-        }
+        if (!batch.length) return finish();
         all = all.concat(batch);
         more();
-      }, done);
+      }, function (err) {
+        // the browser refused to list this folder: say why (a drag that found nothing, 21 Oct 2026), and still
+        // walk whatever it listed before refusing
+        P.err = (err && (err.name || "") + (err.message ? ": " + err.message : "")) || "unknown";
+        P.errAt = entry.fullPath || entry.name;
+        finish();
+      });
     })();
   });
 }
@@ -716,6 +722,7 @@ function take(files) {
     line.push("<br>you dropped " + P.dropped + " &mdash; looked in " + P.folders + " folder" +
               (P.folders === 1 ? "" : "s") + ", " + P.files + " file" + (P.files === 1 ? "" : "s") +
               (P.failed ? ", <b>" + P.failed + " the browser would not let it read</b>" : "") +
+              (P.err ? ". The browser would not open <b>" + esc(P.errAt) + "</b>: " + esc(P.err) : "") +
               ". Drop the <code>_classic_beta_</code> folder itself, from File Explorer.");
   }
   if (say) say.innerHTML = line.join(" &nbsp; ");
