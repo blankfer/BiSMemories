@@ -303,10 +303,12 @@ local function build()
   f.kind = label(d, "GameFontNormal", x, y)
   f.text = label(d, "GameFontHighlight", x, y - 18, DW, 30)
   f.where = label(d, "GameFontDisableSmall", x, y - 52)
-  f.whoWith = label(d, "GameFontDisableSmall", x, y - 68, DW, 26)
-  f.more = label(d, "GameFontDisableSmall", x, y - 96)
+  f.whoWith = label(d, "GameFontDisableSmall", x, y - 68)
+  f.withX, f.withY, f.withW = x + 30, y - 68, DW - 30
+  f.withBtns = {}
+  f.more = label(d, "GameFontDisableSmall", x, y - 104)
   f.fileBox = CreateFrame("EditBox", nil, d)
-  f.fileBox:SetPoint("TOPLEFT", x, y - 114)
+  f.fileBox:SetPoint("TOPLEFT", x, y - 122)
   f.fileBox:SetSize(220, 16)
   f.fileBox:SetAutoFocus(false)
   f.fileBox:SetFontObject("GameFontHighlightSmall")
@@ -402,7 +404,8 @@ function J.Postcard(e)
   local p = J.frame and J.frame.post
   if not p then return end
   local you, them = p.you, p.them
-  local mine = type(e) == "table" and (e.char == nil or e.char == M.Me())
+  -- only the character who took it: an old note nobody has claimed yet (M.ClaimOld) draws nobody
+  local mine = type(e) == "table" and e.char == M.Me()
   p.note:SetText("")
   if mine then
     you:Show()
@@ -418,9 +421,11 @@ function J.Postcard(e)
     you:Hide()
     if type(e) == "table" and e.char then
       p.note:SetText(T.text("muted", "played by " .. tostring(e.char):match("^[^%-]+")))
+    elseif type(e) == "table" then
+      p.note:SetText(T.text("muted", "an older picture - its character logs in to claim it"))
     end
   end
-  local npc = type(e) == "table" and tonumber(e.npc)
+  local npc = M.Face(e)
   if npc then
     them:Show()
     local function ask()
@@ -438,6 +443,73 @@ function J.Postcard(e)
   end
 end
 
+--- THE GAME'S OWN PLAYER MENU for a name (Arn, 21 Oct 2026: "so a year from now i can add them to bis pal
+--- or invite them again"): whisper, invite, add friend - and BiS Tools' pal line, which joins this menu.
+--- The FRIEND menu, as BiS Guild's terminal opens it (a guild menu opened by an addon can taint).
+function J.PlayerMenu(name)
+  if type(name) ~= "string" or name == "" then return false end
+  if UnitPopup_OpenMenu then
+    local ok = pcall(UnitPopup_OpenMenu, "FRIEND", { name = name, chatTarget = name })
+    if ok then return true end
+  end
+  if FriendsFrame_ShowDropdown then return (pcall(FriendsFrame_ShowDropdown, name, false)) end
+  return false
+end
+
+J.WITH_ROWS = 2
+--- Who was there: a name each, in its class colour, laid in rows; a click opens the game's menu for them.
+function J.PaintWith(f, e)
+  for _, b in ipairs(f.withBtns) do b:Hide() end
+  local names = type(e) == "table" and type(e.with) == "table" and e.with or {}
+  if #names == 0 then f.whoWith:SetText("") return 0 end
+  f.whoWith:SetText("with")
+  local colours = _G.RAID_CLASS_COLORS
+  local x, row, shown = 0, 0, 0
+  for i, name in ipairs(names) do
+    local b = f.withBtns[i]
+    if not b then
+      b = CreateFrame("Button", nil, f.detail)
+      b:SetHeight(16)
+      b.fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+      b.fs:SetPoint("LEFT", 0, 0)
+      b.fs:SetWordWrap(false)
+      local hi = b:CreateTexture(nil, "HIGHLIGHT")
+      hi:SetAllPoints()
+      hi:SetColorTexture(1, 1, 1, 0.08)
+      if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
+      b:SetScript("OnClick", function(self) J.PlayerMenu(self.who) end)
+      b:SetScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(self.who or "")
+        GameTooltip:AddLine("click: whisper, invite, add as a friend or a pal", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+      end)
+      b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+      f.withBtns[i] = b
+    end
+    b.who = name
+    b.fs:SetText(name .. (i < #names and "," or ""))
+    local cls = type(e.withClass) == "table" and e.withClass[i]
+    local cc = cls and colours and colours[cls]
+    if cc then b.fs:SetTextColor(cc.r, cc.g, cc.b) else b.fs:SetTextColor(rgb("ink2")) end
+    local w = math.ceil(b.fs:GetStringWidth() or 40) + 6
+    if x > 0 and x + w > f.withW then x, row = 0, row + 1 end
+    if row >= J.WITH_ROWS then break end
+    b:SetWidth(w)
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", f.detail, "TOPLEFT", f.withX + x, f.withY - row * 16 + 2)
+    b:Show()
+    shown = shown + 1
+    x = x + w
+  end
+  if shown < #names then
+    local last = f.withBtns[shown]
+    if last then last.fs:SetText(last.who .. ("  +%d more"):format(#names - shown)) end
+  end
+  return shown
+end
+
 local function paintDetail(f)
   local e = J.sel
   if type(e) ~= "table" then
@@ -446,6 +518,7 @@ local function paintDetail(f)
     f.kind:SetText(T.text("muted", #M.Log() == 0 and "nothing yet" or "pick a memory on the left"))
     f.text:SetText(#M.Log() == 0 and "It fires on levels, first kills, rare loot, achievements and more." or "")
     f.where:SetText("") f.whoWith:SetText("") f.more:SetText("")
+    for _, b in ipairs(f.withBtns) do b:Hide() end
     f.fileBox:Hide()
     return
   end
@@ -455,8 +528,7 @@ local function paintDetail(f)
   f.text:SetText(tostring(e.detail or ""))
   local lvl = (type(e.level) == "number" and e.level > 0) and ("  -  level " .. e.level) or ""
   f.where:SetText(J.Clip(tostring(e.zone or "?") .. lvl, DW, 10))
-  local with = type(e.with) == "table" and #e.with > 0 and ("with " .. table.concat(e.with, ", ")) or ""
-  f.whoWith:SetText(with)
+  J.PaintWith(f, e)
   local more = {}
   if e.secs then more[#more + 1] = ("the fight took %d:%02d"):format(math.floor(e.secs / 60), math.floor(e.secs % 60)) end
   if e.from then more[#more + 1] = "asked for by " .. tostring(e.from) end
@@ -500,15 +572,17 @@ end
 local function paintMap(f)
   local entries = J.Entries()
   local map = J.mapID or (ns.MapView and ns.MapView.Start())
-  local n, inside, off
+  local n, inside, off, rough
   if ns.MapView and map then
-    n, inside, off = ns.MapView.Draw(f.map, entries, map, function(e) J.Select(e) end)
+    n, inside, off, rough = ns.MapView.Draw(f.map, entries, map, function(e) J.Select(e) end)
   end
   if not n then
     f.map.say:SetText(T.text("muted", "the game gave no map to draw here - the pins on your world map still show"))
   else
-    f.map.say:SetText(T.text("muted", ("%d on the map%s"):format(n,
-      (inside or 0) > 0 and ("  -  %d inside dungeons and raids, where the game gives no spot"):format(inside) or "")))
+    local bits = { ("%d on the map"):format(n) }
+    if (rough or 0) > 0 then bits[#bits + 1] = ("%d of them older, placed by their zone (the small dots)"):format(rough) end
+    if (inside or 0) > 0 then bits[#bits + 1] = ("%d inside a dungeon or battleground"):format(inside) end
+    f.map.say:SetText(T.text("muted", table.concat(bits, "  -  ")))
   end
 end
 

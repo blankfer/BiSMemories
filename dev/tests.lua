@@ -1341,6 +1341,22 @@ end
   recap = nil
   H.ok(M.OnEvent("PLAYER_DEAD") ~= nil, "`every death`: every one")
   d.deathEvery = false
+  -- A BATTLEGROUND (Arn, 21 Oct: seventeen Darkspear Islands deaths in one album)
+  local realInst = _G.IsInInstance
+  _G.IsInInstance = function() return true, "pvp" end
+  M.Char().firsts = {}
+  recap = { { sourceName = "Neg Crotic", sourceGUID = "Player-1-0ABC" } }
+  local bg, bgWhy = M.OnEvent("PLAYER_DEAD")
+  H.ok(bg == nil and bgWhy == "a battleground death - only a rival's kill is kept there",
+       "a battleground: killed by a player is no memory", tostring(bgWhy))
+  H.eq(M.Char().firsts.death, nil, "and it does not use up the first death")
+  recap = { { sourceName = "Latina Fatty", sourceGUID = "Player-1-0DEF" } }
+  bg = M.OnEvent("PLAYER_DEAD")
+  H.ok(bg and bg.detail == "killed by your rival Latina Fatty", "a rival's kill still is")
+  _G.IsInInstance = function() return true, "arena" end
+  recap = { { sourceName = "Neg Crotic", sourceGUID = "Player-1-0ABC" } }
+  H.eq((M.OnEvent("PLAYER_DEAD")), nil, "an arena the same")
+  _G.IsInInstance = realInst
 
   H.section("0.9.0: exalted, firsts, the gamba")
   _G.FACTION_STANDING_LABEL8 = "Exalted"
@@ -1499,7 +1515,8 @@ end
   J.everyone, J.sel, J.page = nil, nil, "memories"
   wipe()
   local mine = { reason = "boss", detail = "first kill: Ragnaros", zone = "Molten Core", level = 60, at = os.time() - 600,
-                 with = { "Kumlance", "Neg Crotic" }, char = "Kumlust-Dreamscythe", npc = 11502, secs = 250,
+                 with = { "Kumlance Wildhammer", "Neg Crotic" }, withClass = { "MAGE", false },
+                 char = "Kumlust-Dreamscythe", npc = 11502, secs = 250,
                  gear = { [16] = 17182, [1] = 16900 }, file = "WoWScrnShot_102126_201500" }
   local theirs = { reason = "levelup", detail = "level 20", zone = "Mulgore", at = os.time() - 300, char = "Altie-Dreamscythe" }
   table.insert(log, 1, mine)
@@ -1514,8 +1531,16 @@ end
   hitMine:Click()
   local f = J.frame
   H.ok(J.sel == mine and strip(f.kind._text):find("^Boss") and f.text._text == "first kill: Ragnaros", "click a row: the detail")
-  H.ok(strip(f.whoWith._text) == "with Kumlance, Neg Crotic" and strip(f.more._text):find("the fight took 4:10", 1, true),
-       "who was there, and the fight's time")
+  H.ok(strip(f.whoWith._text) == "with" and f.withBtns[1]:IsShown() and f.withBtns[1].who == "Kumlance Wildhammer"
+       and f.withBtns[2].who == "Neg Crotic" and strip(f.more._text):find("the fight took 4:10", 1, true),
+       "who was there - a name each - and the fight's time")
+  -- a year on: click a name, the game's own player menu (whisper, invite, friend, BiS Tools' pal line)
+  local menu
+  _G.UnitPopup_OpenMenu = function(kind, ctx) menu = kind .. ":" .. tostring(ctx.name) end
+  f.withBtns[1]:Click()
+  H.eq(menu, "FRIEND:Kumlance Wildhammer", "click a name: the game's menu for them, by their whole name")
+  _G.UnitPopup_OpenMenu = nil
+  H.ok(f.withBtns[1].fs._color and f.withBtns[1].fs._color[1] > 0, "in their class colour")
   H.eq(f.fileBox._text, "WoWScrnShot_102126_201500", "the picture's file name, ready to copy")
   local you, them = f.post.you, f.post.them
   H.ok(you._unit == "player" and you._undressed and #you._tried == 2 and you._anim == J.POSE.boss,
@@ -1572,6 +1597,110 @@ end
   H.ok(nL <= 500, "500 of other people's epics: at most one question each - " .. nL, Cost.Top(byL))
   local nS, byS = Cost.Count(function() for _ = 1, 500 do M.OnEvent("CHAT_MSG_SYSTEM", "Kumlance has come online.") end end)
   H.ok(nS <= 1000, "500 system lines: at most two questions each - " .. nS, Cost.Top(byS))
+  wipe()
+end)()
+
+
+;(function()
+  local M, J, MV = NS.M, NS.J, NS.MapView
+  local log = M.Log()
+  local d = NS.DB()
+  local function wipe() for k = #log, 1, -1 do log[k] = nil end end
+
+  H.section("21 Oct: who was there, by their whole names")
+  local real = { _G.GetUnitName, _G.UnitName, _G.UnitClass, _G.UnitIsUnit, _G.GetNumGroupMembers, _G.IsInRaid, _G.UnitExists }
+  local P = { party1 = { "Chain Healz", "SHAMAN" }, party2 = { "Neg Crotic", "WARLOCK" } }
+  -- Forever, measured: UnitName is the first name, GetUnitName(unit, false) the whole one
+  _G.GetUnitName = function(u) return P[u] and P[u][1] or "Kumlust Wildhammer" end
+  _G.UnitName = function(u) local p = P[u] return p and p[1]:match("^%S+") or "Kumlust" end
+  _G.UnitClass = function(u) local p = P[u] return "x", p and p[2] or "MAGE" end
+  _G.UnitIsUnit = function(a, b) return a == b end
+  _G.GetNumGroupMembers = function() return 3 end
+  _G.IsInRaid = function() return false end
+  _G.UnitExists = function(u) return P[u] ~= nil end
+  local names, classes = M.Party()
+  H.ok(#names == 2 and names[1] == "Chain Healz" and classes[1] == "SHAMAN" and names[2] == "Neg Crotic",
+       "whole names (to invite them a year on), with their classes", table.concat(names, ","))
+  _G.GetUnitName, _G.UnitName, _G.UnitClass, _G.UnitIsUnit, _G.GetNumGroupMembers, _G.IsInRaid, _G.UnitExists =
+    real[1], real[2], real[3], real[4], real[5], real[6], real[7]
+
+  H.section("21 Oct: the old notes find their characters")
+  wipe()
+  -- before 0.9.0: no character, only a level and a time; the main at 15+, a rogue alt at 1-5 the same evening
+  local main1 = { reason = "boss", detail = "Charlga Razorflank", level = 15, at = 1000 }
+  local alt1 = { reason = "levelup", detail = "level 2", level = 1, at = 1100 }
+  local main2 = { reason = "death", detail = "x", level = 16, at = 1200 }
+  local alt2 = { reason = "levelup", detail = "level 5", level = 4, at = 1300 }
+  local nolvl = { reason = "zone", detail = "y", level = 0, at = 1400 }
+  for _, e in ipairs({ nolvl, alt2, main2, alt1, main1 }) do log[#log + 1] = e end
+  local tracks = M.Tracks()
+  H.eq(#tracks, 2, "two tracks: levels only go up")
+  local realLevel, realMe = _G.UnitLevel, M.Me
+  _G.UnitLevel = function() return 60 end
+  M.Me = function() return "Main-Realm" end
+  H.eq(M.ClaimOld(), 2, "the main (60) claims the long track")
+  H.ok(main1.char == "Main-Realm" and main2.char == "Main-Realm" and alt1.char == nil, "its notes, not the alt's")
+  _G.UnitLevel = function() return 9 end
+  M.Me = function() return "Rogue-Realm" end
+  H.eq(M.ClaimOld(), 2, "the rogue (9) claims the levels 1 to 5")
+  H.ok(alt1.char == "Rogue-Realm" and alt2.char == "Rogue-Realm" and nolvl.char == nil, "and a note with no level stays nobody's")
+  H.eq(M.ClaimOld(), 0, "nothing is given twice")
+  -- the postcard draws only the character who took it
+  M.Me = function() return "Main-Realm" end
+  J.Show()
+  J.Select(alt1)
+  H.ok(not J.frame.post.you:IsShown(), "the main does not stand in the rogue's level-up")
+  J.Select(nolvl)
+  H.ok(not J.frame.post.you:IsShown() and J.frame.post.note._text:find("older picture", 1, true), "an unclaimed old note: nobody, and why")
+  _G.UnitLevel, M.Me = realLevel, realMe
+
+  H.section("21 Oct: an old boss note gets its face")
+  d.faces = nil
+  M.faceless = nil
+  local set = M.Faceless()
+  H.ok(set["Charlga Razorflank"], "an old boss note without a face is known")
+  local realTarget, realGUID = _G.UnitName, _G.UnitGUID
+  _G.UnitName = function(u) if u == "target" then return "Charlga Razorflank" end return "Kumlust" end
+  _G.UnitGUID = function() return "Creature-0-1-2-3-4421-0001ABCDEF" end
+  M.OnEvent("PLAYER_TARGET_CHANGED")
+  H.eq(d.faces and d.faces["Charlga Razorflank"], 4421, "target her once: her id is kept")
+  H.eq(M.Face(main1), 4421, "and the old postcard has its boss")
+  local asked = 0
+  _G.UnitName = function() asked = asked + 1 return "x" end
+  M.faceless = nil
+  M.OnEvent("PLAYER_TARGET_CHANGED")
+  H.eq(asked, 0, "no old boss left without a face: a target change asks the client nothing")
+  _G.UnitName, _G.UnitGUID = realTarget, realGUID
+  H.eq(M.BossName({ reason = "boss", detail = "SURVIVOR.EXE: Ragnaros slain over The Barrens" }), nil, "BiS Shell's games are no creature")
+
+  H.section("21 Oct: old notes on the map, by their zone")
+  MV.zoneIDs = nil
+  _G.C_Map.GetMapChildrenInfo = function() return { { mapID = 1413, name = "The Barrens" }, { mapID = 1456, name = "Thunder Bluff" } } end
+  wipe()
+  log[1] = { reason = "zone", detail = "a", zone = "The Barrens - The Crossroads", at = 5000, char = "Kumlust-Dreamscythe" }
+  log[2] = { reason = "death", detail = "b", zone = "Darkspear Islands - Camp", at = 5001, char = "Kumlust-Dreamscythe" }
+  log[3] = { reason = "boss", detail = "c", zone = "The Barrens", at = 5002, map = 1413, x = 0.3, y = 0.3, char = "Kumlust-Dreamscythe" }
+  local dots, inside, off, rough = MV.Dots(log, 947)
+  H.ok(#dots == 2 and rough == 1 and inside == 1, "an old note goes by its zone; a battleground stays without a place",
+       #dots .. "/" .. tostring(rough) .. "/" .. tostring(inside))
+  J.Tab("map")
+  J.Show()
+  H.ok(J.frame.map.say._text:find("placed by their zone", 1, true) and J.frame.map.say._text:find("1 inside a dungeon or battleground", 1, true)
+       and not J.frame.map.say._text:find("raids, where", 1, true), "the map says which is which", J.frame.map.say._text)
+  _G.C_Map.GetMapChildrenInfo = nil
+  MV.zoneIDs = nil
+
+  H.section("21 Oct: the year counts the old notes, and /bism year opens it")
+  wipe()
+  local y = tonumber(os.date("%Y"))
+  log[1] = { reason = "zone", detail = "new", at = os.time(), char = M.Me() }
+  log[2] = { reason = "zone", detail = "old", at = os.time() - 60 }
+  H.eq(M.Summary(y, M.Me()).total, 2, "an unclaimed old note counts, as the journal shows it")
+  J.Hide()
+  NS.Slash("year")
+  H.ok(J.frame:IsShown() and J.page == "this year", "/bism year opens the page")
+  J.Hide()
+  J.Tab("memories")
   wipe()
 end)()
 

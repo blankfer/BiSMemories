@@ -104,6 +104,92 @@ function M.Char()
   return c
 end
 
+--- THE OLD MEMORIES' OWNERS (Arn, 21 Oct 2026: "this level up is my rogue alt but it showed my main").
+--- Before 0.9.0 a note kept no character - only its level and its time. But a character's level only
+--- goes up: read in time order, a level-2 note between two level-15 notes is somebody else. So the
+--- unclaimed notes fall into TRACKS (each joins the track whose level it can follow most closely, else
+--- starts one), and a character, when it logs in, claims the track whose last level is the highest at or
+--- below its own - the main takes the long one, the rogue the run of levels 1 to 5. The note then carries
+--- that character for good. A note with no level (0) is left alone; nothing is ever given away twice.
+function M.Tracks()
+  local old = {}
+  for _, e in ipairs(M.Log()) do
+    if type(e) == "table" and e.char == nil and type(e.level) == "number" and e.level > 0 then old[#old + 1] = e end
+  end
+  table.sort(old, function(a, b) return (tonumber(a.at) or 0) < (tonumber(b.at) or 0) end)
+  local tracks = {}
+  for _, e in ipairs(old) do
+    local best
+    for _, t in ipairs(tracks) do
+      if t.top <= e.level and (not best or t.top > best.top) then best = t end
+    end
+    if not best then best = { top = 0, notes = {} } tracks[#tracks + 1] = best end
+    best.top = e.level
+    best.notes[#best.notes + 1] = e
+  end
+  return tracks
+end
+
+function M.ClaimOld()
+  local me = M.Me()
+  local lvl = plain(UnitLevel and UnitLevel("player"))
+  if not me or type(lvl) ~= "number" then return 0 end
+  local pick
+  for _, t in ipairs(M.Tracks()) do
+    if t.top <= lvl and (not pick or t.top > pick.top) then pick = t end
+  end
+  if not pick then return 0 end
+  for _, e in ipairs(pick.notes) do e.char = me end
+  M.faceless = nil
+  return #pick.notes
+end
+
+--- BOSS FACES FOR OLD NOTES (Arn, 21 Oct: "this one did not show the boss dying"). A kill noted from 0.9.0
+--- on keeps the boss's npc id (from your target at the kill); an older one kept only the name. The first
+--- time you target a creature of that name, its id is kept (db.faces) and the old postcard has its boss.
+function M.BossName(e)
+  if type(e) ~= "table" or e.reason ~= "boss" then return nil end
+  local s = tostring(e.detail or "")
+  if s:find("^SURVIVOR") or s:find("^ADVENT") then return nil end      -- BiS Shell's games: no creature
+  s = s:gsub("^first kill: ", ""):gsub(" %- fastest yet.*$", "")
+  return s ~= "" and s or nil
+end
+
+function M.Face(e)
+  if type(e) ~= "table" then return nil end
+  if tonumber(e.npc) then return tonumber(e.npc) end
+  local name = M.BossName(e)
+  local faces = db().faces
+  return name and type(faces) == "table" and tonumber(faces[name]) or nil
+end
+
+--- The names of old bosses with no face yet (cached; nil'd when a note or a face arrives).
+function M.Faceless()
+  if M.faceless then return M.faceless end
+  local set, faces = {}, type(db().faces) == "table" and db().faces or {}
+  for _, e in ipairs(M.Log()) do
+    local name = (type(e) == "table" and not e.npc) and M.BossName(e) or nil
+    if name and not faces[name] then set[name] = true end
+  end
+  M.faceless = set
+  return set
+end
+
+function M.LearnFace()
+  local set = M.Faceless()
+  if next(set) == nil then return nil, "no old boss without a face" end      -- the usual case: no client call
+  local name = UnitName and plain(UnitName("target"))
+  if type(name) ~= "string" or not set[name] then return nil, "not an old boss" end
+  local npc = M.NpcOf(UnitGUID and UnitGUID("target"))
+  if not npc then return nil, "not a creature" end
+  local d = db()
+  d.faces = type(d.faces) == "table" and d.faces or {}
+  d.faces[name] = npc
+  set[name] = nil
+  ns.Print("%s - the old postcard has its boss now", ns.T.text("gold", name))
+  return nil, "learnt " .. name .. "'s face"
+end
+
 --- THE OLD SHARED LIST OF PLACES goes to one character only: the one who most likely made it. Before
 --- 0.9.0 every place went on one list for the whole account; given to everyone, an alt would never have a
 --- first time anywhere the main had been, and given to nobody, the main would photograph home again.
@@ -191,19 +277,33 @@ end
 
 --- Everyone who was there. A memory of a first kill is worth more with the names on it - and the
 --- roster is NOT simply plain on this client, whatever the old comment here claimed.
+--- WHOLE NAMES (Arn, 21 Oct 2026: "it should also show who was in the party so a year from now i can add
+--- them to bis pal or invite them again"): Forever's UnitName is the first name only ("Chain" of "Chain
+--- Healz") - an invite a year on needs the whole one, which GetUnitName(unit, false) gives. And the class,
+--- for the colour. -> names, classes (the same order)
 local function party()
-  local names = {}
+  local names, classes = {}, {}
   local n = plain(GetNumGroupMembers and GetNumGroupMembers()) or 0
   local raid = IsInRaid and IsInRaid()
   for i = 1, n do
     local unit = (raid and "raid" or "party") .. i
-    if UnitExists and UnitExists(unit) and UnitName then
-      local who = plain(UnitName(unit))
-      if who then names[#names + 1] = who end
+    if UnitExists and UnitExists(unit) and not (UnitIsUnit and UnitIsUnit(unit, "player")) then
+      local who
+      if GetUnitName then
+        local ok, whole = pcall(GetUnitName, unit, false)
+        who = ok and plain(whole) or nil
+      end
+      if type(who) ~= "string" or who == "" then who = UnitName and plain(UnitName(unit)) end
+      if type(who) == "string" and who ~= "" then
+        names[#names + 1] = (who:gsub("%-.*$", ""))
+        local cls = UnitClass and plain(select(2, UnitClass(unit)))
+        classes[#names] = type(cls) == "string" and cls or false
+      end
     end
   end
-  return names
+  return names, classes
 end
+M.Party = party
 
 M.log = nil            -- set from the DB on login; kept here so tests can read it directly
 
@@ -288,13 +388,15 @@ function M.Shoot(reason, detail, from, extra)
   local class, race
   if UnitClass then class = select(2, UnitClass("player")) end
   if UnitRace then race = select(2, UnitRace("player")) end
+  local with, withClass = party()
   local entry = {
+    with = with,
+    withClass = withClass,
     reason = reason,
     detail = detail,
     zone = where(),
     level = plain(UnitLevel and UnitLevel("player")) or 0,
     at = (time and time()) or 0,
-    with = party(),
     from = from,
     char = M.Me(),
     class = plain(class),
@@ -693,13 +795,24 @@ function M.Rival(name)
 end
 
 --- The death's memory, or nil and why not.
+--- A battleground or an arena: where dying to a player is the whole evening (Arn, 21 Oct 2026, looking at
+--- seventeen Darkspear Islands deaths in one album: "these are a lot of screenshots for a battleground").
+function M.PvP()
+  if not IsInInstance then return false end
+  local ok, _, kind = pcall(IsInInstance)
+  kind = ok and plain(kind)
+  return kind == "pvp" or kind == "arena"
+end
+
 function M.Death()
   local c = M.Char()
-  local first = not c.firsts.death
-  c.firsts.death = c.firsts.death or ((time and time()) or 0)
   local killer, isPlayer, npc = M.Killer()
   local extra = { killer = killer, npc = npc }
   if killer and M.Rival(killer) then return M.Shoot("death", "killed by your rival " .. killer, nil, extra) end
+  -- in a battleground only a rival's kill is a memory - not the first death, not "killed by a player"
+  if M.PvP() then return nil, "a battleground death - only a rival's kill is kept there" end
+  local first = not c.firsts.death
+  c.firsts.death = c.firsts.death or ((time and time()) or 0)
   if killer and isPlayer then return M.Shoot("death", "killed by " .. killer, nil, extra) end
   if M.fighting then return M.Shoot("death", "died fighting " .. M.fighting, nil, extra) end
   if first then return M.Shoot("death", "your first death" .. (killer and (" - " .. killer) or ""), nil, extra) end
@@ -772,6 +885,7 @@ local EVENTS = {
   "CHAT_MSG_SYSTEM", "CHAT_MSG_COMBAT_FACTION_CHANGE",
   "PLAYER_ENTERING_WORLD",
   "SCREENSHOT_SUCCEEDED", "SCREENSHOT_FAILED",
+  "PLAYER_TARGET_CHANGED",                       -- an old boss note's face (M.LearnFace)
 }
 M.EVENTS = EVENTS
 
@@ -935,7 +1049,11 @@ function M.Decide(event, ...)
     if not line then return nil, "not exalted" end
     return M.Shoot("exalted", line)
 
+  elseif event == "PLAYER_TARGET_CHANGED" then
+    return M.LearnFace()
+
   elseif event == "PLAYER_ENTERING_WORLD" then
+    if not M.claimTried then M.claimTried = true M.ClaimOld() end   -- the old notes that are this character's
     M.SeeZone(realZone())             -- wherever you logged in or zoned to, known from now on
     M.ArmCandid()                     -- a week up? book a moment somewhere in this session
     M.HookGamba()                     -- BiS Gamba's rounds, when it is installed

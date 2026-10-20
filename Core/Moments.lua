@@ -87,7 +87,7 @@ function M.Summary(year, char)
   for _, e in ipairs(M.Log()) do
     local at = tonumber(e.at) or 0
     local y = date and tonumber(date("%Y", at)) or 0
-    if y == year and (not char or e.char == char) then
+    if y == year and (not char or e.char == nil or e.char == char) then   -- an unclaimed old note: the journal shows it too
       s.total = s.total + 1
       s.kinds[e.reason or "?"] = (s.kinds[e.reason or "?"] or 0) + 1
       if e.reason == "boss" and tostring(e.detail or ""):find("^first kill: ") then

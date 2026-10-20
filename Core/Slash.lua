@@ -248,6 +248,7 @@ function ns.Slash(input)
 
   elseif cmd == "year" then
     year(rest:lower() == "all")
+    if ns.J then ns.J.Tab("this year") ns.J.Show() end
 
   elseif cmd == "onthisday" then
     local d = db()

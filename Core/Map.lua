@@ -77,20 +77,53 @@ function MV.OnMap(from, x, y, to)
   return r[1] + x * (r[2] - r[1]), r[3] + y * (r[4] - r[3])
 end
 
---- The memories with a spot, as dots on `mapID`: { e, x, y } (0-1 across the map), and how many had no
---- spot (taken inside an instance) or sit off this map.
+--- OLD NOTES BY THEIR ZONE (Arn's map, 21 Oct 2026: "0 on the map - 246 inside dungeons" - they were not
+--- inside anything; notes from before 0.9.0 simply kept no spot). Such a note still has its zone's name:
+--- the zone's map is found by name among Azeroth's (C_Map.GetMapChildrenInfo, read once) and the note
+--- goes near the zone's middle - a smaller, dimmer dot, spread a little so a zone's notes do not stack.
+function MV.ZoneID(zone)
+  if type(zone) ~= "string" or zone == "" then return nil end
+  if not MV.zoneIDs then
+    MV.zoneIDs = {}
+    local CM = C_Map
+    if CM and CM.GetMapChildrenInfo then
+      local ok, kids = pcall(CM.GetMapChildrenInfo, MV.WORLD, nil, true)
+      if ok and type(kids) == "table" then
+        for _, k in ipairs(kids) do
+          local name, id = type(k) == "table" and k.name, type(k) == "table" and num(k.mapID)
+          if type(name) == "string" and not hidden(name) and id and MV.zoneIDs[name] == nil then MV.zoneIDs[name] = id end
+        end
+      end
+    end
+  end
+  return MV.zoneIDs[zone] or MV.zoneIDs[zone:match("^(.-)%s+%-%s+") or ""]
+end
+
+--- The memories with a spot, as dots on `mapID`: { e, x, y, rough } (0-1 across the map). Answers the dots,
+--- how many have no place at all (inside an instance), how many sit off this map, and how many are rough
+--- (an old note, placed by its zone).
 function MV.Dots(entries, mapID)
-  local out, inside, off = {}, 0, 0
+  local out, inside, off, rough = {}, 0, 0, 0
   for _, e in ipairs(entries) do
     if type(e) == "table" and e.map and e.x and e.y then
       local x, y = MV.OnMap(e.map, e.x, e.y, mapID)
       if x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then out[#out + 1] = { e = e, x = x, y = y }
       else off = off + 1 end
     elseif type(e) == "table" then
-      inside = inside + 1
+      local zid = MV.ZoneID(e.zone)
+      local at = tonumber(e.at) or 0
+      local jx, jy = ((at % 97) / 97 - 0.5) * 0.3, ((at % 89) / 89 - 0.5) * 0.3
+      local x, y
+      if zid then x, y = MV.OnMap(zid, 0.5 + jx, 0.5 + jy, mapID) end
+      if x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
+        out[#out + 1] = { e = e, x = x, y = y, rough = true }
+        rough = rough + 1
+      else
+        inside = inside + 1
+      end
     end
   end
-  return out, inside, off
+  return out, inside, off, rough
 end
 
 --- Draw `mapID` and its dots into `panel` (a frame), fitted and centred. Answers the dots drawn, or nil
@@ -120,7 +153,7 @@ function MV.Draw(panel, entries, mapID, onClick)
     t:SetPoint("TOPLEFT", panel, "TOPLEFT", ox + p[2] * k, -(oy + p[3] * k))
     t:Show()
   end
-  local dots, inside, off = MV.Dots(entries, mapID)
+  local dots, inside, off, rough = MV.Dots(entries, mapID)
   for i, d in ipairs(dots) do
     local b = panel.dots[i]
     if not b then
@@ -139,12 +172,14 @@ function MV.Draw(panel, entries, mapID, onClick)
     end
     local r, g, bl = T.rgb(MV.COLOUR[d.e.reason] or "ink")
     b.fill:SetColorTexture(r, g, bl, 1)
+    b:SetSize(d.rough and MV.DOT - 3 or MV.DOT, d.rough and MV.DOT - 3 or MV.DOT)
+    b:SetAlpha(d.rough and 0.6 or 1)
     b.entry, b.onClick = d.e, onClick
     b:ClearAllPoints()
     b:SetPoint("CENTER", panel, "TOPLEFT", ox + d.x * lw * k, -(oy + d.y * lh * k))
     b:Show()
   end
-  return #dots, inside, off
+  return #dots, inside, off, rough
 end
 
 --- The map to open on: the world when it can be drawn, else where you are.
