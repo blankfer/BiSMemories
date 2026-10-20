@@ -181,9 +181,6 @@
       <p id="where-plain">Open <code>C:\Program Files (x86)\World of Warcraft</code> in File Explorer and drag the
          <code>_classic_beta_</code> folder here. That is all: the page finds your pictures and the
          addon's notes inside it by itself.</p>
-      <label class="btn">or pick the folder
-        <input type="file" id="pics" webkitdirectory directory multiple>
-      </label>
       <div class="found" id="found"></div>
     </div>
     <details class="small" style="margin-top:18px;max-width:760px">
@@ -192,8 +189,12 @@
          it might be <code>D:\Games\World of Warcraft\_classic_beta_</code>. You can also drop the
          <code>Screenshots</code> folder and the notes file separately; the notes are
          <code>WTF\Account\(your account)\SavedVariables\BiSMemories.lua</code>.</p>
-      <p>Picking with the button, Chrome may say it will "upload" files: it means hand them to this page.
-         Nothing leaves your computer &mdash; this page works with the internet unplugged.</p>
+      <!-- THE PICKER IS THE FALLBACK (Arn, 21 Oct 2026: Chrome's "Upload 21,700 files to this site?" - the picker
+           hands over every file in the folder, AddOns and all; a drag never asks and is read selectively) -->
+      <p>Cannot drag? Pick the folder instead:
+         <label class="btn">pick the folder <input type="file" id="pics" webkitdirectory directory multiple></label></p>
+      <p>Chrome will then ask to "upload" thousands of files. That is its word for handing them to this page &mdash;
+         nothing leaves your computer, and this page works with the internet unplugged. Dragging never asks.</p>
       <p>Captions appear after you log out or <code>/reload</code> in game &mdash; that is when WoW writes
          the notes down.</p>
     </details>
