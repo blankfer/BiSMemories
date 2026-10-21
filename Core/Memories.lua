@@ -351,22 +351,29 @@ function M.NpcOf(guid)
   return nil
 end
 
---- CLEAN SHOTS (Arn's yes, 21 Oct review): the interface hidden for the instant of the shot, the way
---- Alt+Z hides it (SetUIVisibility - the client's own, allowed in a fight), and back the moment the
---- client says the picture is written - or after M.CLEAN_BACK seconds, whatever happens.
+--- CLEAN SHOTS (Arn's yes, 21 Oct review): the interface out of the picture for the instant of the shot,
+--- and back the moment the client says the picture is written - or after M.CLEAN_BACK seconds, whatever
+--- happens. NOT SetUIVisibility, Alt+Z's own call: on the live client it is PROTECTED (Arn's BugGrabber,
+--- the stress test, 21 Oct - "tried to call the protected function 'UNKNOWN()'"), and an addon's shot is
+--- never a key press. The pcall around it said fine while the client refused it (solved.md). So the
+--- interface is FADED instead - alpha is not a guarded property (action-bar faders change it in a fight) -
+--- and comes back to the player's own alpha, not to 1.
 M.CLEAN_BACK = 2
 function M.Clean(on)
-  if not SetUIVisibility then return false end
+  local ui = UIParent
+  if not (ui and ui.SetAlpha and ui.GetAlpha) then return false end
   if on then
     if M.uiHidden then return true end
-    if not pcall(SetUIVisibility, false) then return false end
+    M.uiAlpha = ui:GetAlpha() or 1
+    ui:SetAlpha(0)
     M.uiHidden = true
     if C_Timer and C_Timer.After then C_Timer.After(M.CLEAN_BACK, function() M.Clean(false) end) end
     return true
   end
   if not M.uiHidden then return false end
   M.uiHidden = nil
-  pcall(SetUIVisibility, true)
+  ui:SetAlpha(M.uiAlpha or 1)
+  M.uiAlpha = nil
   return true
 end
 

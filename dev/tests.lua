@@ -1430,25 +1430,42 @@ end
   _G.BiSGambaAPI, _G.BiSToolsAPI = nil, nil
 
   H.section("0.9.0: clean shots - the interface hidden for the instant of the picture")
-  local vis = {}
-  _G.SetUIVisibility = function(v) vis[#vis + 1] = v end
+  -- THE LIVE CLIENT'S RULE (Arn's BugGrabber, the stress test, 21 Oct: "AddOn 'BiSMemories' tried to call the
+  -- protected function 'UNKNOWN()'" at Memories.lua:362): SetUIVisibility - Alt+Z's own call - is PROTECTED. An
+  -- addon's shot is never a key press, so the client refuses it: nothing hides, no Lua error (pcall says fine),
+  -- an ADDON_ACTION_BLOCKED instead. This mock does exactly that, and the test asks what the picture SHOWS.
+  local blocked = 0
+  _G.SetUIVisibility = function() blocked = blocked + 1 end
+  local ui = _G.UIParent
+  run()                                                -- earlier shots' "back in a moment" timers, run out
+  M.Clean(false)
+  ui:SetAlpha(1)                                       -- the client's UIParent starts fully shown
+  local function shown() return (ui:GetAlpha() or 1) > 0 end
   d.clean, d.delay = true, 0.6
   M.Shoot("manual", "clean")
-  H.eq(#vis, 0, "nothing hidden before the shutter")
+  H.ok(shown(), "nothing hidden before the shutter")
   q[1]()
   table.remove(q, 1)
-  H.ok(vis[1] == false and M.uiHidden, "the shutter: hidden")
+  H.ok(not shown() and M.uiHidden, "the shutter: the interface is really out of the picture")
   M.OnEvent("SCREENSHOT_SUCCEEDED")
-  H.ok(vis[2] == true and not M.uiHidden, "the picture written: back")
+  H.ok(shown() and ui:GetAlpha() == 1 and not M.uiHidden, "the picture written: back, as it was")
   M.Shoot("manual", "the event never comes")
   run()
   run()
-  H.ok(vis[#vis] == true and not M.uiHidden, "and if the client never says, back after a moment anyway")
-  d.clean = false
-  local before = #vis
-  M.Shoot("manual", "not clean")
+  H.ok(shown() and not M.uiHidden, "and if the client never says, back after a moment anyway")
+  H.eq(blocked, 0, "and never the protected call: nothing for BugGrabber")
+  ui:SetAlpha(0.8)                                     -- someone dimmed their interface: it comes back dimmed
+  M.Shoot("manual", "dimmed")
   run()
-  H.eq(#vis, before, "switched off: the interface stays")
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  H.eq(ui:GetAlpha(), 0.8, "back to the player's own alpha, not to 1")
+  ui:SetAlpha(1)
+  d.clean = false
+  M.Shoot("manual", "not clean")
+  q[1]()
+  table.remove(q, 1)
+  H.ok(shown(), "switched off: the interface stays")
+  run()
   d.delay, d.clean = 0, true
   _G.SetUIVisibility = nil
 
