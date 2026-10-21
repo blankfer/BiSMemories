@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Fixed: clean pictures set off an error on the live client.** Hiding the interface for the picture used the game's Alt+Z call, which the live client only lets a key press make - so every automatic picture was refused ("tried to call the protected function"). The interface now fades out for the instant of the picture instead, and comes back exactly as it was (a dimmed interface stays dimmed).
 - **You show up in FojjiCore's windows.** A party member running FojjiCore now sees your level and experience in its Experience window and your campfire in its Campfires window, instead of "No Addon" (the shared BiS lib, version 16 - quiet if you run FojjiCore's Dungeon Journal yourself, which says the same).
 
 ## 0.9.1

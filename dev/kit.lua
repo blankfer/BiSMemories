@@ -162,6 +162,10 @@ local function newFrame(ftype, name, parent)
     function fr:SetHeight(h) self._h = h end
     function fr:GetWidth() return self._w end
     function fr:GetHeight() return self._h end
+    -- A FRAME KEEPS ITS ALPHA, STARTING AT 1 (21 Oct 2026, clean shots: the catch-all answered SetAlpha on a
+    -- frame with silence and GetAlpha with nothing, so "is the interface out of the picture" was untestable).
+    function fr:SetAlpha(a) self._alpha = a end
+    function fr:GetAlpha() if self._alpha == nil then return 1 end return self._alpha end
     -- Enough anchor maths to catch a window that WALKS. These used to be flat
     -- constants, so `Relayout` could drop the frame by its own height on every
     -- call and no test could ever see it. A frame anchored to UIParent's
