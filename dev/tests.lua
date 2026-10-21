@@ -100,7 +100,7 @@ fire("ADDON_LOADED", "BiSMemories")
 H.ok(type(_G.BiSMemoriesDB) == "table" and _G.BiSMemoriesDB.comm == true, "SavedVariables shaped with defaults on first load")
 
 H.section("embedded libs are canon (drift fences)")
-H.eq(_G.LibBiSComm.MINOR, 14, "LibBiSComm minor 14")
+H.eq(_G.LibBiSComm.MINOR, 15, "LibBiSComm minor 15")
 local function listed(rel) for _, f in ipairs(FILES) do if f == rel then return true end end return false end
 H.ok(listed("Libs/BiSTheme/Console.lua"), "TOC lists the Console embed")
 H.ok(listed("Libs/LibBiSComm-1.0/LibBiSComm-1.0.lua"), "TOC lists the comm embed")
