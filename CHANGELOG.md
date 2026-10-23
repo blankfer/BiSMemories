@@ -1,5 +1,9 @@
 # BiSMemories
 
+## 0.9.3
+
+- **The Deeprun Tram's timetable, for the whole guild.** With the shared BiS lib's new version, riding the Deeprun Tram with any BiS addon times it for your guild, the way the zeppelins and boats already are - BiS Tools' ride card and BiS Shell's TRAM-TRAK read it.
+
 ## 0.9.2
 
 - **Fixed: clean pictures set off an error on the live client.** Hiding the interface for the picture used the game's Alt+Z call, which the live client only lets a key press make - so every automatic picture was refused ("tried to call the protected function"). The interface now fades out for the instant of the picture instead, and comes back exactly as it was (a dimmed interface stays dimmed).
