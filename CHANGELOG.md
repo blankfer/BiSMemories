@@ -1,5 +1,9 @@
 # BiSMemories
 
+## 0.9.4
+
+- **A real camera shutter.** Every memory now clicks with the game's own screenshot camera sound instead of a menu click. It plays on the sound-effects channel, so muting sound effects mutes it too. `/bism` options still switch the sound off.
+
 ## 0.9.3
 
 - **The Deeprun Tram's timetable, for the whole guild.** With the shared BiS lib's new version, riding the Deeprun Tram with any BiS addon times it for your guild, the way the zeppelins and boats already are - BiS Tools' ride card and BiS Shell's TRAM-TRAK read it.

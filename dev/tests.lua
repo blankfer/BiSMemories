@@ -170,8 +170,16 @@ end
 H.section("the camera")
 -- The client's own screenshot call is the one thing this addon cannot fake, so the suite counts it.
 local shots, kits, files = 0, 0, 0
+local heard = {}                -- every kit asked for, with its channel
+local REFUSE = {}               -- kit ids this client will not play (PlaySound answers false)
 _G.Screenshot = function() shots = shots + 1 end
-_G.PlaySound = function() kits = kits + 1 return true end
+_G.PlaySound = function(id, channel)
+  if type(id) ~= "number" then error("PlaySound wants a kit id", 2) end
+  heard[#heard + 1] = { id = id, channel = channel }
+  if REFUSE[id] then return false end
+  kits = kits + 1
+  return true
+end
 _G.PlaySoundFile = function() files = files + 1 end
 _G.UnitLevel = function() return 42 end
 _G.GetRealZoneText = function() return "Blackrock Depths" end
@@ -199,6 +207,10 @@ H.ok(e.file and e.file:find("^WoWScrnShot_"), "and names the file the client wil
 -- only: a game file by path is silent on the modern engine and still reports success.
 H.ok(kits > 0, "a shot clicks, so silence never means 'did it work?'")
 H.eq(files, 0, "and never through a file path, which lies on the modern engine")
+-- THE CAMERA'S OWN SHUTTER (Arn, 5 Nov, from the sound explorer: REPORT_SCREENSHOT_CAMERA 230810), on SFX
+H.eq(heard[1] and heard[1].id, 230810, "the shutter is the camera sound, REPORT_SCREENSHOT_CAMERA")
+H.eq(heard[1] and heard[1].channel, "SFX", "on the effects channel - muting effects mutes it")
+H.eq(M.CLICK[2], 1115, "the old click stays behind it, for a client that will not play it")
 clock = clock + 100
 kits = 0
 _G.BiSMemoriesDB.sound = false
