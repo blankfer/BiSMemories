@@ -308,6 +308,31 @@ local function build()
   post.them = model(post, 180, J.POST_H - 16)
   post.them:SetPoint("BOTTOMRIGHT", -6, 3)
   post.note = label(post, "GameFontDisableSmall", 10, -8)
+  -- WHO KILLED YOU, NAMED ON THE CARD (6 Nov 2026): top right, over their side; a player's name in their class colour,
+  -- and a click opens the game's menu for them (whisper, add friend - and BiS Tools' rival line) like "with" names
+  local kb = CreateFrame("Button", nil, post)
+  kb:SetSize(170, 16)
+  kb:SetPoint("TOPRIGHT", -8, -6)
+  kb.fs = kb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  kb.fs:SetPoint("RIGHT", 0, 0)
+  kb.fs:SetJustifyH("RIGHT")
+  kb.fs:SetWordWrap(false)
+  if kb.RegisterForClicks then kb:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
+  kb:SetScript("OnClick", function(self) if self.player then J.PlayerMenu(self.who) end end)
+  kb:SetScript("OnEnter", function(self)
+    if not (GameTooltip and self.who) then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:AddLine(self.who)
+    if self.player then
+      GameTooltip:AddLine(self.looks or "a player", 1, 1, 1)
+      if self.standIn then GameTooltip:AddLine("drawn as a townsperson of their race - the game shows a player only while they are there", 0.7, 0.7, 0.7, true) end
+      GameTooltip:AddLine("click: whisper, add as a friend - or a rival in BiS Tools", 0.7, 0.7, 0.7, true)
+    end
+    GameTooltip:Show()
+  end)
+  kb:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  kb:Hide()
+  post.killer = kb
   f.post = post
   local DW, x, y = J.DETAIL_W - 8, 4, -(J.POST_H + 8)
   f.kind = label(d, "GameFontNormal", x, y)
@@ -436,10 +461,12 @@ function J.Postcard(e)
     end
   end
   local npc = M.Face(e)
-  if npc then
+  -- a player who killed you: a townsperson of their race and sex stands in (M.StandIn), by display id
+  local standIn = not npc and M.StandIn(e) or nil
+  if npc or standIn then
     them:Show()
     local function ask()
-      pcall(them.SetCreature, them, npc)
+      if npc then pcall(them.SetCreature, them, npc) else pcall(them.SetDisplayInfo, them, standIn) end
       pcall(them.SetFacing, them, -0.5)
       -- a boss you killed lies where it fell; whoever killed you stands over you
       pcall(them.SetAnimation, them, (e.reason == "boss") and 1 or 0)
@@ -451,6 +478,27 @@ function J.Postcard(e)
   else
     them:Hide()
   end
+  J.PaintKiller(p, e, standIn)
+end
+
+--- The killer's name on the card: a death only. A player (no npc id) in class colour and clickable; a creature in plain
+--- ink, its name alone.
+function J.PaintKiller(p, e, standIn)
+  local kb = p and p.killer
+  if not kb then return false end
+  local who = type(e) == "table" and e.reason == "death" and type(e.killer) == "string" and e.killer or nil
+  if not who then kb:Hide() kb.who = nil return false end
+  local player = not tonumber(e.npc)
+  kb.who, kb.player, kb.standIn = who, player, standIn ~= nil
+  local cc = player and e.killerClass and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[e.killerClass]
+  if cc then kb.fs:SetTextColor(cc.r, cc.g, cc.b) else kb.fs:SetTextColor(rgb(player and "ink" or "ink2")) end
+  kb.fs:SetText(who)
+  local looks = {}
+  if e.killerRace then looks[#looks + 1] = (e.killerRace == "Scourge") and "Undead" or e.killerRace end
+  if e.killerClass then looks[#looks + 1] = e.killerClass:sub(1, 1) .. e.killerClass:sub(2):lower() end
+  kb.looks = #looks > 0 and table.concat(looks, " ") or nil
+  kb:Show()
+  return true
 end
 
 --- THE GAME'S OWN PLAYER MENU for a name (Arn, 21 Oct 2026: "so a year from now i can add them to bis pal

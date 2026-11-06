@@ -246,7 +246,12 @@ local function newFrame(ftype, name, parent)
         function fr:SetUnit(u) self._unit, self._creature, self._tried = u, nil, {} end
         function fr:SetCreature(id)
             if type(id) ~= "number" then error("SetCreature needs an npc id", 0) end
-            self._creature, self._unit = id, nil
+            self._creature, self._unit, self._display = id, nil, nil
+        end
+        -- a body by DISPLAY id (6 Nov 2026, a player killer's stand-in): a number, as SetCreature
+        function fr:SetDisplayInfo(id)
+            if type(id) ~= "number" then error("SetDisplayInfo needs a display id", 0) end
+            self._display, self._creature, self._unit = id, nil, nil
         end
         function fr:ClearModel() self._unit, self._creature, self._tried = nil, nil, {} end
         function fr:Undress() self._undressed = true self._tried = {} end

@@ -1,5 +1,9 @@
 # BiSMemories
 
+## 0.9.5
+
+- **Killed by a player: they're on the postcard now.** A creature is drawn from its id, but a player can only be drawn while they stand there, so a player's kill used to leave you alone on the card. Now the moment you die, their class, race and sex are noted, and the postcard puts a townsperson of their race and sex over you, with their name at the top in their class colour. Click the name to whisper them, add them as a friend, or make them a rival in BiS Tools. Forever's own races (like Skyborne) have no townsperson yet: their card shows the name alone. Deaths to creatures look the same as before, with the creature's name now on the card too.
+
 ## 0.9.4
 
 - **A real camera shutter.** Every memory now clicks with the game's own screenshot camera sound instead of a menu click. It plays on the sound-effects channel, so muting sound effects mutes it too. `/bism` options still switch the sound off.
