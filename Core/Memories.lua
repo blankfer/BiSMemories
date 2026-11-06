@@ -214,12 +214,16 @@ end
 -- our own, from SOUND KIT IDS ONLY: on the modern engine (WoW Forever) PlaySoundFile with a game
 -- file path plays nothing AND reports success, which cost an evening in BiSGamba on 17 Sep 2026.
 -- PlaySound(id) answers true or false there and is the honest way to ask.
-local CLICK = { 1115, 8959, 850, 839 }     -- first one this client admits to, then remembered
+-- THE CAMERA'S OWN SHUTTER FIRST (Arn, 5 Nov 2026, found in BiS Tools' sound explorer: REPORT_SCREENSHOT_CAMERA,
+-- 230810 - "for bis memopries"); the old click and the rest stay behind it in case this client will not play it.
+-- The effects channel, not Master: Master plays even with sound effects muted.
+local CLICK = { 230810, 1115, 8959, 850, 839 }     -- first one this client admits to, then remembered
+M.CLICK = CLICK
 local clickId
 
 local function click()
   if not db().sound or not PlaySound then return false end
-  local channel = "Master"
+  local channel = "SFX"
   if clickId then
     local ok, willPlay = pcall(PlaySound, clickId, channel)
     return ok and willPlay ~= false
