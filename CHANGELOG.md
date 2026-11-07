@@ -1,5 +1,9 @@
 # BiSMemories
 
+## Unreleased
+
+- **Killed by a player: they're on the postcard now.** A creature is drawn from its id, but a player can only be drawn while they stand there, so a player's kill used to leave you alone on the card. Now the moment you die, their class, race and sex are noted, and the postcard puts a townsperson of their race and sex over you, with their name at the top in their class colour. Click the name to whisper them, add them as a friend, or make them a rival in BiS Tools. Forever's own races (like Skyborne) have no townsperson yet: their card shows the name alone. Deaths to creatures look the same as before, with the creature's name now on the card too.
+
 ## 0.10.0
 
 - **Clearer windows.** In the options window (and the minimap menu) every button, box and row lights up under the mouse, the window is 20% bigger, and the bottom strip shows which version you are on until you hover a setting.

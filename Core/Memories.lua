@@ -794,7 +794,47 @@ function M.Killer()
   name = okN and type(name) == "string" and name or nil
   guid = okG and type(guid) == "string" and guid or nil
   if not name then return nil end
-  return name, guid and guid:find("^Player%-") ~= nil or false, M.NpcOf(guid)
+  return name, guid and guid:find("^Player%-") ~= nil or false, M.NpcOf(guid), guid
+end
+
+--- A PLAYER WHO KILLED YOU, AS THE GAME DESCRIBES THEM (Arn, 6 Nov 2026: "it used to show both me and the mob that
+--- killed me" - a player has no npc id, so the postcard had nobody to draw). Asked at the death, from the recap's
+--- guid: class, race and sex (GetPlayerInfoByGUID - Forever's census has it). Each answer asked "hidden?" first;
+--- what the client will not say is left out. The postcard draws a townsperson of that race and sex (M.StandIn).
+function M.KillerLooks(guid)
+  if type(guid) ~= "string" or not guid:find("^Player%-") or not GetPlayerInfoByGUID then return nil end
+  local ok, _, class, _, race, sex = pcall(GetPlayerInfoByGUID, guid)
+  if not ok then return nil end
+  class, race, sex = plain(class), plain(race), plain(sex)
+  local out = {}
+  if type(class) == "string" and class ~= "" then out.class = class end
+  if type(race) == "string" and race ~= "" then out.race = race end
+  if sex == 2 or sex == 3 then out.sex = sex end            -- the client's 2 = male, 3 = female (1 = unknown)
+  return next(out) and out or nil
+end
+
+--- THE STAND-INS: the game draws another player only while they stand there, and Forever's model frames cannot build
+--- a body from a race (BiS Shell's Test-Model, 19 Oct: no SetCustomRace). So a plain townsperson of the killer's race
+--- and sex stands in, by display id (BiS Shell's Probe3D.lua P.FOLK, each read from Wowhead's model data - UNVERIFIED
+--- live on Forever). Forever's own races (Skyborne...) have none yet: their postcard shows the name card alone.
+M.STANDIN = {
+  Human    = { [2] = 1291, [3] = 5444 },   -- Innkeeper Farley / Innkeeper Allison
+  Orc      = { [2] = 5705, [3] = 5706 },   -- Innkeeper Grosk / Innkeeper Gryshka
+  Dwarf    = { [2] = 3434, [3] = 3066 },   -- Innkeeper Belm / Braenna Flintcrag
+  NightElf = { [2] = 5440, [3] = 5439 },   -- Innkeeper Keldamyr / Innkeeper Saelienne
+  Scourge  = { [2] = 5449, [3] = 8190 },   -- Innkeeper Norman / Innkeeper Renee
+  Tauren   = { [2] = 5486, [3] = 5487 },   -- Innkeeper Kauth / Innkeeper Pala
+  Gnome    = { [2] = 7028, [3] = 7119 },   -- Tinkmaster Overspark / Bimble Longberry
+  Troll    = { [2] = 4072, [3] = 4358 },   -- Master Gadrin / Jandi
+}
+M.STANDIN.Undead = M.STANDIN.Scourge
+
+--- The display id to draw for a player killer, or nil (no race known, or a race with no stand-in yet).
+function M.StandIn(e)
+  if type(e) ~= "table" or type(e.killerRace) ~= "string" then return nil end
+  local r = M.STANDIN[e.killerRace]
+  if not r then return nil end
+  return r[e.killerSex] or r[2]
 end
 
 --- Is this name one of your rivals in BiS Tools? Asked through its API (version 2), never its insides.
@@ -817,8 +857,12 @@ end
 
 function M.Death()
   local c = M.Char()
-  local killer, isPlayer, npc = M.Killer()
+  local killer, isPlayer, npc, guid = M.Killer()
   local extra = { killer = killer, npc = npc }
+  if isPlayer then
+    local looks = M.KillerLooks(guid)
+    if looks then extra.killerClass, extra.killerRace, extra.killerSex = looks.class, looks.race, looks.sex end
+  end
   if killer and M.Rival(killer) then return M.Shoot("death", "killed by your rival " .. killer, nil, extra) end
   -- in a battleground only a rival's kill is a memory - not the first death, not "killed by a player"
   if M.PvP() then return nil, "a battleground death - only a rival's kill is kept there" end

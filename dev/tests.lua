@@ -1382,6 +1382,25 @@ end
   recap = { { sourceName = "Neg Crotic", sourceGUID = "Player-1-0ABC" } }
   dd = M.OnEvent("PLAYER_DEAD")
   H.ok(dd and dd.detail == "killed by Neg Crotic" and dd.killer == "Neg Crotic", "killed by a player")
+  -- A PLAYER HAS NO NPC ID (Arn, 6 Nov: "it used to show both me and the mob that killed me" - Harles Harles drew
+  -- nobody): what the game says of them at the death - class, race, sex - kept for the postcard's stand-in
+  local realInfo = _G.GetPlayerInfoByGUID
+  _G.GetPlayerInfoByGUID = function(guid)
+    if guid == "Player-1-0ABC" then return "Warrior", "WARRIOR", "Orc", "Orc", 3, "Neg Crotic", "" end
+    if guid == "Player-1-0HID" then return H.secret(), H.secret(), H.secret(), H.secret(), H.secret() end
+    return nil
+  end
+  dd = M.OnEvent("PLAYER_DEAD")
+  H.ok(dd and dd.killerClass == "WARRIOR" and dd.killerRace == "Orc" and dd.killerSex == 3, "their class, race and sex, kept",
+       dd and tostring(dd.killerRace))
+  H.eq(M.StandIn(dd), 5706, "an orc woman: Innkeeper Gryshka stands in")
+  H.eq(M.StandIn({ killerRace = "Skyborne", killerSex = 2 }), nil, "Forever's own race: no stand-in yet")
+  H.eq(M.StandIn({ killerRace = "Scourge" }), 5449, "the client's word for Undead; no sex known: the man")
+  recap = { { sourceName = "Hidden Person", sourceGUID = "Player-1-0HID" } }
+  dd = M.OnEvent("PLAYER_DEAD")
+  H.ok(dd and dd.killer == "Hidden Person" and dd.killerRace == nil and dd.killerClass == nil,
+       "a hidden answer is left out, never kept")
+  _G.GetPlayerInfoByGUID = realInfo
   recap = { { sourceName = "Latina Fatty", sourceGUID = "Player-1-0DEF" } }
   dd = M.OnEvent("PLAYER_DEAD")
   H.ok(dd and dd.detail == "killed by your rival Latina Fatty", "killed by a rival (BiS Tools' API)", dd and dd.detail)
@@ -1618,6 +1637,42 @@ end
        "THE POSTCARD: you, in what you wore, in the moment's pose", tostring(you._anim))
   H.ok(them:IsShown() and them._creature == 11502 and them._anim == 1, "beside the boss, where it fell")
   fitsIn(f, "the journal, a memory open")
+  H.ok(not f.post.killer:IsShown(), "a boss kill: no killer's name on the card")
+  -- KILLED BY A PLAYER: a townsperson of their race and sex stands in, their name in class colour, a click their menu
+  local keepColours = _G.RAID_CLASS_COLORS
+  _G.RAID_CLASS_COLORS = { WARRIOR = { r = 0.78, g = 0.61, b = 0.43 } }
+  local pk = { reason = "death", detail = "killed by Harles Harles", killer = "Harles Harles", char = M.Me(),
+               killerRace = "Orc", killerSex = 3, killerClass = "WARRIOR" }
+  J.sel = pk
+  J.Postcard(pk)
+  local kb = f.post.killer
+  H.ok(them:IsShown() and them._display == 5706 and them._creature == nil and them._anim == 0,
+       "a player killer: an orc woman stands in, standing over you", tostring(them._display))
+  H.ok(kb:IsShown() and kb.fs._text == "Harles Harles" and kb.fs._color and math.abs(kb.fs._color[1] - 0.78) < 1e-6,
+       "their name on the card, in their class colour")
+  menu = nil
+  _G.UnitPopup_OpenMenu = function(kind, ctx) menu = kind .. ":" .. tostring(ctx.name) end
+  kb:Click()
+  H.eq(menu, "FRIEND:Harles Harles", "click their name: the game's menu (friend, whisper - and BiS Tools' rival line)")
+  fitsIn(f, "the journal, killed by a player")
+  -- Forever's own race: no stand-in yet - the name alone, no blank model
+  pk.killerRace = "Skyborne"
+  J.Postcard(pk)
+  H.ok(not them:IsShown() and kb:IsShown(), "a race with no stand-in: the name card alone")
+  -- the old note (before this version): only a name - still named on the card
+  local old = { reason = "death", detail = "killed by Harles Harles", killer = "Harles Harles", char = M.Me() }
+  J.Postcard(old)
+  H.ok(not them:IsShown() and kb:IsShown() and kb.fs._text == "Harles Harles", "an older note: the name, nothing drawn")
+  -- killed by a creature: it is drawn as before, its name plain, and a click opens nothing
+  local mob = { reason = "death", detail = "your first death - Kobold Vermin", killer = "Kobold Vermin", npc = 6, char = M.Me() }
+  J.Postcard(mob)
+  menu = nil
+  kb:Click()
+  H.ok(them:IsShown() and them._creature == 6 and kb.fs._text == "Kobold Vermin" and menu == nil,
+       "killed by a creature: drawn as before, its name plain, no menu")
+  _G.UnitPopup_OpenMenu, _G.RAID_CLASS_COLORS = nil, keepColours
+  J.sel = mine
+  J.Postcard(mine)
   for i, hit in ipairs(J.frame.hits) do if hit.entry == theirs then hit:Click() end end
   H.ok(not you:IsShown() and strip(f.post.note._text) == "played by Altie" and not them:IsShown(),
        "another character's memory: no body to draw - it says who")
