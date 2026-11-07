@@ -512,8 +512,27 @@ end
 --- THE GAME'S OWN PLAYER MENU for a name (Arn, 21 Oct 2026: "so a year from now i can add them to bis pal
 --- or invite them again"): whisper, invite, add friend - and BiS Tools' pal line, which joins this menu.
 --- The FRIEND menu, as BiS Guild's terminal opens it (a guild menu opened by an addon can taint).
+--- NEVER INSIDE AN INSTANCE (7 Nov 2026 sweep): the game's player menu opened from an addon's code there breaks the
+--- game's own menu for the rest of the session. So it opens only when IsInInstance() answers a plain `false` - a
+--- hidden answer, an error or no such call is not a "no" - and otherwise one line says how to reach them instead.
+function J.Outside()
+  if not IsInInstance then return false end
+  local ok, inside = pcall(IsInInstance)
+  if not ok then return false end
+  if issecretvalue then
+    local asked, hidden = pcall(issecretvalue, inside)
+    if not asked or hidden then return false end
+  end
+  return rawequal(inside, false)
+end
+
 function J.PlayerMenu(name)
   if type(name) ~= "string" or name == "" then return false end
+  if not J.Outside() then
+    ns.Print("%s - inside an instance the game keeps that menu to itself: /w %s, or click again outside",
+      tostring(name), tostring(name))
+    return false
+  end
   if UnitPopup_OpenMenu then
     local ok = pcall(UnitPopup_OpenMenu, "FRIEND", { name = name, chatTarget = name })
     if ok then return true end

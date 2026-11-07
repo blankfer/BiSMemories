@@ -21,7 +21,11 @@ Read ../_bisdev/CLAUDE.md first.
   Guild's Where.lua way). `Core/Pins.lua` (`ns.Pins`): world-map pins via HereBeDragons-Pins.
 - `Core/Journal.lua` (`ns.J`): the 1.43:1 window - list + detail with the 3D postcard (`J.Postcard`,
   poses `J.POSE`), map and year pages, the on-this-day card (`J.Toast`), the countdown (`J.Count`).
-- `UI/Options.lua` (`ns.CFG`): BiSTheme's options window in two columns, and the minimap button.
+- `UI/Options.lua` (`ns.CFG`): BiSTheme's options window in two columns, the minimap button (kit standard: left =
+  journal, right = options) and the BiS> Memories page in the game's options (`CFG.RegisterPage`, at PLAYER_LOGIN).
+- Forever 1.0 (7 Nov 2026): `ns.DEFAULTS` = what a NEW install gets (big moments on, extras off); `ns.WAS`
+  (Memories.lua) = 0.10.1's values, written once into an EXISTING save by `ns.Forever10` (Init.lua, before `db()`;
+  stamp `forever10`). A per-character mirror alone counts as existing.
 - `Libs/`: embedded `BiSTheme/Console.lua`, `Options.lua`, `Minimap.lua` and `LibBiSComm-1.0` — copies, see
   `../_bisdev/CLAUDE.md`. Since 0.9.0 also `LibStub`, `CallbackHandler-1.0`, `HereBeDragons` (BSD), BiS
   Tools' copies byte for byte - `Libs/THIRD-PARTY.txt`. The suites compile HereBeDragons, never run it.
