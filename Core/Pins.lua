@@ -23,6 +23,24 @@ P.pool = {}
 
 local function HBD() return LibStub and LibStub("HereBeDragons-Pins-2.0", true) end
 
+--- UNDER THE QUEST PINS (Arn, 6 Nov 2026, a memory square sitting on a quest's "!": "sometime the memeories blocks
+--- quest stuff on the map"). The library puts every pin on the map's AREA_POI level, beside the quest pins, and the
+--- last one drawn wins the mouse. Ours get their OWN level, just above the map's art (the explored-area layer) and
+--- under every quest and point of interest - the way OpenMap and EllesmereUI layer theirs on Forever. Made once a
+--- session; a map that refuses it keeps the library's level (nil). P.layer: nil = not tried, false = refused.
+P.LAYER = "PIN_FRAME_LEVEL_BISMEMORIES"
+function P.Layer()
+  if P.layer ~= nil then return P.layer or nil end
+  local wm = _G.WorldMapFrame
+  if not (wm and wm.GetPinFrameLevelsManager) then return nil end      -- the map not loaded yet: try next time
+  local ok, fl = pcall(wm.GetPinFrameLevelsManager, wm)
+  if not (ok and type(fl) == "table" and fl.InsertFrameLevelAbove and fl.GetValidFrameLevel) then return nil end
+  local made = pcall(fl.InsertFrameLevelAbove, fl, P.LAYER, "PIN_FRAME_LEVEL_MAP_EXPLORATION")
+  made = made and pcall(fl.GetValidFrameLevel, fl, P.LAYER)
+  P.layer = made and P.LAYER or false
+  return P.layer or nil
+end
+
 --- Which memories get a pin: "mine", "all" or "off" (d.pins).
 function P.Mode()
   local m = ns.DB().pins
@@ -79,7 +97,7 @@ function P.Update()
       local r, g, bl = T.rgb(colours[e.reason] or "ink")
       b.fill:SetColorTexture(r, g, bl, 1)
       b.entry = e
-      local ok, placed = pcall(H.AddWorldMapIconMap, H, P, b, e.map, e.x, e.y, _G.HBD_PINS_WORLDMAP_SHOW_PARENT)
+      local ok, placed = pcall(H.AddWorldMapIconMap, H, P, b, e.map, e.x, e.y, _G.HBD_PINS_WORLDMAP_SHOW_PARENT, P.Layer())
       if ok and placed ~= false then
         P.pins[e] = b
         n = n + 1
@@ -95,4 +113,9 @@ end
 
 local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_LOGIN")
-f:SetScript("OnEvent", function() P.Update() end)
+f:RegisterEvent("ADDON_LOADED")
+f:SetScript("OnEvent", function(_, event, name)
+  if event == "PLAYER_LOGIN" then return P.Update() end
+  -- the map loads after login on some clients: then the layer is made and the pins moved onto it
+  if name == "Blizzard_WorldMap" and P.layer == nil then P.Update() end
+end)
