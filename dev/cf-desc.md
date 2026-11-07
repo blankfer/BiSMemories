@@ -5,6 +5,10 @@ Paste everything below the line into the project description
 
 Written 21 Oct 2026 for 0.9.0. The page it replaces described 0.3.0 and the old two-button album.
 7 Nov 2026, 1.0.0: the quiet start and where the options live (one line under "What sets it off").
+Changed since the previous text (8 Nov, 1.0.0 - Forever 1.0): the options page is a full-page dashboard under
+**BiS>**; the minimap button's two clicks (left = journal, right = options window, again closes it); existing
+players keep every switch; the world-map pins are a camera viewfinder and start off; "others can call one" for
+group photos.
 In the house voice (`_bisdev/docs/voice.md`): the opener talks; lists and tables stay flat.
 
 ---
@@ -25,7 +29,12 @@ You killed Ragnaros for the first time. Somewhere in a folder of eleven hundred 
 - Your biggest win at a BiS Gamba table
 - One candid shot a week, at a random moment
 
-Every one is a switch in the options. A new install starts with the big moments only - level ups, first kills, achievements, firsts - and no sound; switch the rest on in **Esc > Options > AddOns > BiS> Memories**, or right-click the minimap button. The interface hides for the instant of the shot, so the picture is the game, not your bars.
+Every one is a switch in the options. A new install starts with the big moments only - level ups, first kills, achievements, firsts - and no sound; switch the rest on whenever you like. Already using BiS Memories? Every switch you had stays exactly as it was. The interface hides for the instant of the shot, so the picture is the game, not your bars.
+
+## Options
+
+- **Esc > Options > AddOns > BiS> > Memories** is a full-page dashboard: every section down the left - the camera, milestones, bosses, loot, deaths, out in the world, group photos, the journal, world-map pins, the album page - and its settings big and readable on the right. Every BiS addon you have is listed under **BiS>**.
+- **The minimap button**, the same as every BiS addon: left-click opens the journal, right-click opens the options window (right-click again closes it).
 
 ## Your album
 
@@ -42,10 +51,10 @@ Search for a zone, a boss, an item or a friend's name, or click a count to see o
 `/bism journal` opens your memories night by night. Click one and you're on a postcard: you in 3D, in what you wore that moment, beside the boss you killed or whoever killed you.
 
 - **Who was there.** Every picture keeps your group. Click a name to whisper them, invite them again, or add them as a friend or a BiS Tools pal (outside instances).
-- **The map.** Every picture as a dot where it was taken, and pins on the game's world map.
+- **The map.** Every picture as a dot where it was taken. On the game's world map, each memory can be a pin: a camera viewfinder, four corners in the memory's colour with nothing in the middle, so the quest marker or road under it stays in plain sight. Pins start off - `/bism pins mine` turns them on.
 - **On this day.** Once a day: what happened a year ago today.
 - **The year.** Levels, first kills, new places. `/bism year`.
-- **Group photo.** `/bism group` counts down on everyone's screen, and the whole group takes its picture at the same second.
+- **Group photo.** `/bism group` counts down on everyone's screen, and the whole group takes its picture at the same second. Someone else's call only reaches you when "others can call one" is on.
 
 ## Commands
 
@@ -57,7 +66,7 @@ Search for a zone, a boss, an item or a friend's name, or click a count to see o
 | `/bism group` | a group photo |
 | `/bism now` | a picture right now |
 | `/bism pins mine` / `all` / `off` | pins on the world map |
-| `/bism options` | every setting |
+| `/bism options` | the options window |
 
 ## Good to know
 
