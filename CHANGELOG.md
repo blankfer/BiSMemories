@@ -1,8 +1,15 @@
 # BiSMemories
 
-## 0.9.5
+## Unreleased
 
 - **Killed by a player: they're on the postcard now.** A creature is drawn from its id, but a player can only be drawn while they stand there, so a player's kill used to leave you alone on the card. Now the moment you die, their class, race and sex are noted, and the postcard puts a townsperson of their race and sex over you, with their name at the top in their class colour. Click the name to whisper them, add them as a friend, or make them a rival in BiS Tools. Forever's own races (like Skyborne) have no townsperson yet: their card shows the name alone. Deaths to creatures look the same as before, with the creature's name now on the card too.
+
+## 0.10.0
+
+- **Clearer windows.** In the options window (and the minimap menu) every button, box and row lights up under the mouse, the window is 20% bigger, and the bottom strip shows which version you are on until you hover a setting.
+- **Short words for the long commands.** Every `/bism` command longer than 4 letters has a short one too: `snd` (sound), `clr` (clear), `zone` (zones), `stat` (status), `hear` (heard), `book` (journal), `opt` (options), `grp` (group), `otd` (onthisday), `each` (every), `cln` (clean). The long ones still work, and `/bism help` shows both.
+- **The journal lights up under the mouse.** Its page tabs, the character button, each memory in the list, the names under "with" and the on-this-day card now glow with a purple wash and a bar on the left when you point at them; the dots on the journal's map and the pins on the world map get a purple edge.
+- **The journal shows its version**, faintly, in the bottom-right corner - and on a test copy, which build it is.
 
 ## 0.9.4
 
