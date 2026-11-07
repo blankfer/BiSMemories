@@ -29,11 +29,13 @@ local function fakeHBDPins()
             error("HereBeDragons-Pins-2.0: " .. what .. ": 'uiMapID', 'x' and 'y' must be numbers", 3)
         end
     end
-    function P:AddWorldMapIconMap(ref, icon, map, x, y, flag)
+    function P:AddWorldMapIconMap(ref, icon, map, x, y, flag, level)
         check(ref, icon, map, x, y, "AddWorldMapIconMap")
         if PINS.minimap[icon] then error("this frame is already a pin on the other map", 2) end
         if flag ~= nil and type(flag) ~= "number" then error("showFlag must be a number (or nil)", 2) end
-        PINS.world[icon] = { map = map, x = x, y = y, flag = flag }
+        -- the frame level TYPE the map's pin manager knows by name (the library defaults to AREA_POI)
+        if level ~= nil and type(level) ~= "string" then error("frameLevel must be a level type name (or nil)", 2) end
+        PINS.world[icon] = { map = map, x = x, y = y, flag = flag, level = level }
     end
     function P:RemoveWorldMapIcon(ref, icon) PINS.world[icon] = nil end
     function P:RemoveAllWorldMapIcons() PINS.world = {} end
@@ -1572,6 +1574,47 @@ end
   local n = 0
   for _, p in pairs(PINS.world) do n = n + 1 H.ok(p.flag == _G.HBD_PINS_WORLDMAP_SHOW_PARENT, "on the zone map and one up") end
   H.eq(n, 2, "and the library has them")
+  -- UNDER THE QUEST PINS (Arn, 6 Nov, a map with a memory square on a quest's "!": "sometime the memeories blocks
+  -- quest stuff on the map"). The library puts every pin on AREA_POI, beside the quest pins; ours get their own
+  -- layer just above the map's art. The client's pin manager, as it behaves: a level type it does not know is an
+  -- error, and a new one goes in above one it knows.
+  do
+    local order = { "PIN_FRAME_LEVEL_MAP_EXPLORATION", "PIN_FRAME_LEVEL_AREA_POI", "PIN_FRAME_LEVEL_ACTIVE_QUEST" }
+    local fl = {}
+    function fl:GetValidFrameLevel(kind)
+      for i, k in ipairs(order) do if k == kind then return 100 + i * 10 end end
+      error("unknown pin frame level type " .. tostring(kind), 2)
+    end
+    function fl:InsertFrameLevelAbove(kind, above)
+      for i, k in ipairs(order) do
+        if k == above then table.insert(order, i + 1, kind) return end
+      end
+      error("no such level to insert above: " .. tostring(above), 2)
+    end
+    local keepWM = _G.WorldMapFrame
+    _G.WorldMapFrame = { GetPinFrameLevelsManager = function() return fl end }
+    NS.Pins.layer = nil
+    NS.Pins.Update()
+    local lv
+    for _, p in pairs(PINS.world) do lv = p.level end
+    H.eq(lv, "PIN_FRAME_LEVEL_BISMEMORIES", "pins go on their own layer")
+    H.ok(fl:GetValidFrameLevel(lv) > fl:GetValidFrameLevel("PIN_FRAME_LEVEL_MAP_EXPLORATION")
+         and fl:GetValidFrameLevel(lv) < fl:GetValidFrameLevel("PIN_FRAME_LEVEL_AREA_POI"),
+         "above the map's art, under every quest and point of interest")
+    NS.Pins.Update()
+    local n2 = 0
+    for _, k in ipairs(order) do if k == lv then n2 = n2 + 1 end end
+    H.eq(n2, 1, "the layer is made once a session, not once per update")
+    -- a client whose manager refuses: the library's own level, the pins still there
+    function fl:InsertFrameLevelAbove() error("refused") end
+    order = { "PIN_FRAME_LEVEL_AREA_POI" }
+    NS.Pins.layer = nil
+    H.eq(NS.Pins.Update(), 2, "a map that will not take a new layer: the pins still go up")
+    for _, p in pairs(PINS.world) do lv = p.level end
+    H.eq(lv, nil, "on the library's default level")
+    _G.WorldMapFrame = keepWM
+    NS.Pins.layer = nil
+  end
   d.pins = "all"
   H.eq(NS.Pins.Update(), 3, "every character's, when asked")
   d.pins = "off"
