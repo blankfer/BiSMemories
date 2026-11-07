@@ -186,7 +186,50 @@ function J.Head(h)
   return T.text("accent", where) .. T.text("muted", ("  %s  %s%s"):format(day, span, kills))
 end
 
+--- The journal's version mark: "0.9.4", or on a copy deploy.sh stamped ("feat/x@abc1234+ 1106-1841")
+--- "0.9.4  abc1234+ 1106-1841" - the branch is left out to keep it short (it is in the full stamp).
+function J.Mark()
+  local b, v = ns.BUILD, tostring(ns.VERSION)
+  local sha = type(b) == "string" and b:match("@(%S+)")
+  if not sha then return v end
+  local at = b:match("@%S+%s+(%S+)%s*$")
+  return v .. "  " .. sha .. (at and (" " .. at) or "")
+end
+
 --------------------------------------------------------------------- the window --
+
+--- EVERYTHING CLICKABLE POPS UNDER THE MOUSE (Arn, 6 Nov 2026; BiS Tools' processing window is the model):
+--- an accent wash, a 3 px accent bar on the left, the label at full brightness - and back again when the
+--- mouse leaves (to the label's resting colour, `b.ink`, "ink2" if unset). `over`: the wash sits OVER the
+--- words (a patch on top of its parent's text), so it stays a tint and the bar does the popping. Whatever
+--- the button already does on hover (its tooltip) still runs. `b.popIf(b)` false: nothing to click, no light.
+J.POP, J.TINT = 0.32, 0.25
+function J.Pop(b, label, over)
+  b.wash = b.wash or tex(b, "BORDER", "accent", 1)
+  b.wash:SetAllPoints()
+  b.wash:SetAlpha(0)
+  b.bar = b.bar or tex(b, "ARTWORK", "accent", 1)
+  b.bar:SetPoint("TOPLEFT", 0, 0)
+  b.bar:SetPoint("BOTTOMLEFT", 0, 0)
+  b.bar:SetWidth(3)
+  b.bar:SetAlpha(0)
+  local enter, leave = b:GetScript("OnEnter"), b:GetScript("OnLeave")
+  b:SetScript("OnEnter", function(self, ...)
+    if not (self.popIf and not self:popIf()) then
+      self.wash:SetAlpha(over and J.TINT or J.POP)
+      self.bar:SetAlpha(1)
+      if label then label:SetTextColor(rgb("ink")) end
+    end
+    if enter then return enter(self, ...) end
+  end)
+  b:SetScript("OnLeave", function(self, ...)
+    self.wash:SetAlpha(0)
+    self.bar:SetAlpha(0)
+    if label then label:SetTextColor(rgb(self.ink or "ink2")) end
+    if leave then return leave(self, ...) end
+  end)
+  return b
+end
 
 local function button(parent, w, h, word, onClick)
   local b = CreateFrame("Button", nil, parent)
@@ -196,8 +239,10 @@ local function button(parent, w, h, word, onClick)
   b.word = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   b.word:SetPoint("CENTER", 0, 0)
   b.word:SetText(word)
+  b.ink = "ink2"
+  b.word:SetTextColor(rgb(b.ink))
   b:SetScript("OnClick", onClick)
-  return b
+  return J.Pop(b, b.word)
 end
 
 local function label(parent, template, x, y, w, h)
@@ -275,6 +320,7 @@ local function build()
     fs:SetPoint("RIGHT", list, "RIGHT", -6, 0)
     fs:SetJustifyH("LEFT")
     if fs.SetWordWrap then fs:SetWordWrap(false) end
+    fs:SetTextColor(rgb("ink2"))                 -- resting; the mouse brings it to full brightness
     f.rows[i] = fs
     -- the hover and click patch: hands the drag on to the window, so a row never pins it in place
     local hit = CreateFrame("Button", nil, list)
@@ -287,6 +333,9 @@ local function build()
     hit:SetScript("OnEnter", function(self) J.Tip(self, self.entry) end)
     hit:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     hit:SetScript("OnClick", function(self) if self.entry then J.Select(self.entry) end end)
+    -- the patch lies over the list's words, so its wash is a tint; a night's heading is no button
+    hit.popIf = function(self) return self.entry ~= nil end
+    J.Pop(hit, fs, true)
     f.hits[i] = hit
   end
   -- the wheel walks the list, a few rows a notch
@@ -359,6 +408,13 @@ local function build()
   f.pathLabel:SetJustifyH("LEFT")
   f.count = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   f.count:SetPoint("BOTTOMRIGHT", -10, 28)
+  -- THE VERSION MARK (Arn, 6 Nov 2026): which version, and on a deployed test copy which commit and when -
+  -- faint, in the empty corner above the count. Not in the header bar: it has its label (one bar, one label).
+  f.build = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  if STANDARD_TEXT_FONT then pcall(f.build.SetFont, f.build, STANDARD_TEXT_FONT, 8) end
+  f.build:SetPoint("BOTTOMRIGHT", -10, 41)
+  f.build:SetJustifyH("RIGHT")
+  f.build:SetAlpha(0.6)
   f.pathBox = CreateFrame("EditBox", nil, f)
   f.pathBox:SetPoint("BOTTOMLEFT", 10, 8)
   f.pathBox:SetPoint("RIGHT", f, "RIGHT", -10, 0)
@@ -481,11 +537,8 @@ function J.PaintWith(f, e)
       b = CreateFrame("Button", nil, f.detail)
       b:SetHeight(16)
       b.fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-      b.fs:SetPoint("LEFT", 0, 0)
+      b.fs:SetPoint("LEFT", 3, 0)              -- clear of the hover bar
       b.fs:SetWordWrap(false)
-      local hi = b:CreateTexture(nil, "HIGHLIGHT")
-      hi:SetAllPoints()
-      hi:SetColorTexture(1, 1, 1, 0.08)
       if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
       b:SetScript("OnClick", function(self) J.PlayerMenu(self.who) end)
       b:SetScript("OnEnter", function(self)
@@ -496,6 +549,7 @@ function J.PaintWith(f, e)
         GameTooltip:Show()
       end)
       b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+      J.Pop(b)                                  -- the wash and the bar; the name keeps its class colour
       f.withBtns[i] = b
     end
     b.who = name
@@ -610,7 +664,10 @@ function J.Refresh()
   local f = build()
   J.page = J.page or "memories"
   for _, b in ipairs(f.tabs) do
-    b.word:SetText(b.name == J.page and T.text("accent", b.name) or T.text("ink2", b.name))
+    -- the colour on the label, not in the text, so the hover can brighten it and give it back
+    b.ink = b.name == J.page and "accent" or "ink2"
+    b.word:SetText(b.name)
+    b.word:SetTextColor(rgb(b.ink))
   end
   f.who.word:SetText(J.everyone and "every character" or "this character")
   local list = J.page == "memories"
@@ -628,6 +685,7 @@ function J.Refresh()
   end
   local n = #J.Entries()
   f.count:SetText(T.text("muted", n == 0 and "" or (n .. " kept")))
+  f.build:SetText(T.text("muted", J.Mark()))
   f.pathBox:SetText(J.AlbumPath())
   f.pathBox:SetCursorPosition(0)
   f.pathLabel:SetText(T.text("muted", J.AlbumPathWhole()
@@ -674,6 +732,7 @@ function J.Toast(e, words)
     t.title = label(t, "GameFontNormal", 10, -6)
     t.line = label(t, "GameFontHighlightSmall", 10, -24)
     t:SetScript("OnClick", function(self) self:Hide() J.Select(self.entry) J.Show() end)
+    J.Pop(t)                                    -- it is a button: it says so under the mouse
     J.toast = t
   end
   t.entry = e

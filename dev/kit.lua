@@ -51,8 +51,17 @@ H.TEMPLATE_SIZE = {
 -- STARTS and whether it ends inside its window.
 H.labels = {}
 
-local function newTexture(owner)
-    local t = { _shown = true, _parent = owner }
+local function newTexture(owner, layer)
+    -- THE LAYER AND THE ALPHA, KEPT (6 Nov 2026, the hover rule): the client draws a HIGHLIGHT or an
+    -- OVERLAY texture over the text and starts every texture at alpha 1. The catch-all answered SetAlpha
+    -- with silence and GetAlpha with nil, so "does the row light up under the mouse" was untestable.
+    local t = { _shown = true, _parent = owner, _layer = layer or "ARTWORK", _alpha = 1 }
+    function t:SetAlpha(a)
+        if not isnum(a) then error("SetAlpha needs a number", 0) end
+        self._alpha = a
+    end
+    function t:GetAlpha() return self._alpha end
+    function t:GetDrawLayer() return self._layer end
     -- size and anchor REMEMBERED: a label pinned beside an icon starts where the icon ends
     function t:SetAllPoints() self._all = true end
     function t:SetPoint(...) keepPoint(self, ...) end
@@ -222,7 +231,7 @@ local function newFrame(ftype, name, parent)
         end
         return true
     end
-    function fr:CreateTexture() local t = newTexture(self); self._regions = self._regions or {}; table.insert(self._regions, t); return t end
+    function fr:CreateTexture(_, layer) local t = newTexture(self, layer); self._regions = self._regions or {}; table.insert(self._regions, t); return t end
     function fr:CreateFontString(_, _, template) local f = newFontString(self, template); self._regions = self._regions or {}; table.insert(self._regions, f); return f end
     function fr:SetScript(k, fn) self._scripts[k] = fn end
     function fr:GetScript(k) return self._scripts[k] end

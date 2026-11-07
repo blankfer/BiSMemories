@@ -165,8 +165,17 @@ function MV.Draw(panel, entries, mapID, onClick)
       b.edge:SetColorTexture(0, 0, 0, 1)
       b.fill = b:CreateTexture(nil, "OVERLAY")
       b.fill:SetAllPoints()
-      b:SetScript("OnEnter", function(self) if ns.J and ns.J.Tip then ns.J.Tip(self, self.entry, true) end end)
-      b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+      -- under the mouse its edge goes to the accent (Arn, 6 Nov: everything clickable lights up) - a
+      -- modest light: the map itself is not washed
+      b:SetScript("OnEnter", function(self)
+        local r, g, bl = T.rgb("accent")
+        self.edge:SetColorTexture(r, g, bl, 1)
+        if ns.J and ns.J.Tip then ns.J.Tip(self, self.entry, true) end
+      end)
+      b:SetScript("OnLeave", function(self)
+        self.edge:SetColorTexture(0, 0, 0, 1)
+        if GameTooltip then GameTooltip:Hide() end
+      end)
       b:SetScript("OnClick", function(self) if self.onClick and self.entry then self.onClick(self.entry) end end)
       panel.dots[i] = b
     end

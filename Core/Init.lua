@@ -34,6 +34,17 @@ end
 ns.VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version"))
   or (GetAddOnMetadata and GetAddOnMetadata(ADDON, "Version")) or "dev"
 
+--- THE DEPLOY STAMP (6 Nov 2026): deploy.sh writes "## X-BiS-Build: <branch>@<commit>[+] <MMDD-HHMM>" into the
+--- game folder's copy of the TOC; a released zip has none. The journal shows it faint, so a test build tells
+--- which copy it is. Answers nil when there is none.
+function ns.ReadBuild()
+  local b = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "X-BiS-Build"))
+    or (GetAddOnMetadata and GetAddOnMetadata(ADDON, "X-BiS-Build"))
+  if type(b) ~= "string" or b == "" then return nil end
+  return b
+end
+ns.BUILD = ns.ReadBuild()
+
 function ns.Print(fmt, ...)
   local msg = select("#", ...) > 0 and fmt:format(...) or fmt
   DEFAULT_CHAT_FRAME:AddMessage(T.text("accent", ADDON) .. " " .. msg)
