@@ -1956,10 +1956,19 @@ end)()
   local pin = NS.Pins.pins[e]
   H.ok(pin ~= nil, "the world map has a pin to hover")
   if pin then
+    -- A VIEWFINDER, NOT A SQUARE (Arn, 7 Nov live: "maybe we dont make them into a square but a crosshair or
+    -- something that has the middle blank ... so the middle is always see through"): four corner brackets, nothing
+    -- drawn in the middle
+    local P = NS.Pins
+    H.ok(pin.fill == nil and pin.arms and #pin.arms == 8 and pin.shade and #pin.shade == 8,
+         "a pin is four corner brackets (and their dark outline), no filled square")
+    H.ok(2 * P.ARM + 2 <= P.SIZE, "each bracket stops short of the middle: the middle is see-through", P.ARM .. "/" .. P.SIZE)
+    local kind = pin.arms[1]._color
+    H.ok(kind and not near(kind, "accent"), "the brackets wear the memory's colour")
     pin:Fire("OnEnter")
-    H.ok(near(pin.edge._color, "accent"), "a world-map pin's edge lights under the mouse")
+    H.ok(near(pin.arms[1]._color, "accent") and near(pin.arms[8]._color, "accent"), "a world-map pin lights under the mouse")
     pin:Fire("OnLeave")
-    H.ok(pin.edge._color and pin.edge._color[1] == 0, "and goes back to black")
+    H.ok(pin.arms[1]._color[1] == kind[1] and pin.arms[1]._color[2] == kind[2], "and goes back to its colour")
   end
 
   H.section("6 Nov: Escape closes every window, and small text is bigger")
