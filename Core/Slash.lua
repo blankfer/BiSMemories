@@ -25,6 +25,10 @@
       /bism onthisday · clean   on this day on/off; hide the interface for the picture on/off
       /bism db                  which saved copy came back at this login
 
+  Every command longer than 4 letters has a short word too (ns.SHORT, 6 Nov 2026): sound = snd,
+  clear = clr, zones = zone, status = stat, heard = hear, journal = book, options = opt, group = grp,
+  onthisday = otd, every = each, clean = cln; where = path. The long names keep working.
+
   Reading it back matters as much as taking it: the note names the file the client wrote, so a
   picture in Screenshots\ can be matched to the night it came from.
 ]]
@@ -146,6 +150,22 @@ local function year(all)
   end
 end
 
+-- SHORT WORDS (Arn, 6 Nov 2026, BiS Tools first: "any thing more than 3 or 4 letters cut it down"): every
+-- command longer than 4 letters answers to a word of 4 or fewer too. The long names keep working - a macro
+-- or a habit never breaks. `ns.SHORT` is long -> short (the help shows it); `ns.SLASH_WORD` is every other
+-- word a command answers to -> its long name.
+ns.SHORT = { sound = "snd", clear = "clr", zones = "zone", status = "stat", heard = "hear", journal = "book",
+             options = "opt", group = "grp", onthisday = "otd", every = "each", clean = "cln" }
+ns.SLASH_WORD = { places = "zones", album = "journal", config = "options", settings = "options", cheese = "group",
+                  where = "path" }
+for long, short in pairs(ns.SHORT) do ns.SLASH_WORD[short] = long end
+
+--- The command a typed word means: "snd" -> "sound", "places" -> "zones"; anything else as it is.
+function ns.SlashWord(word)
+  word = tostring(word or ""):lower()
+  return ns.SLASH_WORD[word] or word
+end
+
 function ns.Slash(input)
   -- THE COMMAND IS LOWERCASED; THE ARGUMENT IS NOT (3 Oct 2026). It used to lower() the whole
   -- line, which quietly ruined the two arguments that are a PERSON'S words rather than a keyword:
@@ -156,7 +176,7 @@ function ns.Slash(input)
   -- numbers below - so "on LevelUp" keeps working.
   local raw = tostring(input or "")
   local cmd, rest = raw:match("^%s*(%S*)%s*(.-)%s*$")
-  cmd = cmd:lower()
+  cmd = ns.SlashWord(cmd)                -- lowered, and a short word or an old one made the long name
 
   if cmd == "" then
     list(10)
@@ -209,7 +229,7 @@ function ns.Slash(input)
     M.Log()
     ns.Print("forgot %d note(s). The pictures are still where they were.", n)
 
-  elseif cmd == "zones" or cmd == "places" then
+  elseif cmd == "zones" then             -- also places, zone
     -- WHAT IT REMEMBERS OF WHERE YOU HAVE BEEN. "It photographs places I know" and "it has
     -- forgotten every place I know" look identical from the outside, and the second is what was
     -- really happening on 24 Sep - one zone remembered after a week of play. This says which.
@@ -233,16 +253,16 @@ function ns.Slash(input)
   elseif cmd == "heard" then
     heard()
 
-  elseif cmd == "journal" or cmd == "album" or cmd == "book" then
+  elseif cmd == "journal" then           -- also album, book
     if ns.J then ns.J.Toggle() else ns.Print("the journal is not loaded") end
 
   elseif cmd == "map" then
     if ns.J then ns.J.Tab("map") ns.J.Show() end
 
-  elseif cmd == "options" or cmd == "config" or cmd == "settings" then
+  elseif cmd == "options" then           -- also config, settings, opt
     if ns.CFG then ns.CFG.Toggle() else ns.Print("the options are not loaded") end
 
-  elseif cmd == "group" or cmd == "cheese" then
+  elseif cmd == "group" then             -- also cheese, grp
     local ok, why = M.GroupPhoto(tonumber(rest))
     if not ok then ns.Print("no group photo - %s", tostring(why)) end
 
@@ -287,7 +307,7 @@ function ns.Slash(input)
   -- WHERE THE ALBUM PAGE IS. An addon cannot know its own full path - there is no API for the
   -- install folder and none for the version folder either - so the certain part is printed, and
   -- `/memories wow <folder>` makes it whole and keeps it.
-  elseif cmd == "path" or cmd == "where" then
+  elseif cmd == "path" then              -- also where
     if not ns.J then ns.Print("the journal is not loaded") return end
     ns.Print("the album page: " .. ns.J.AlbumPath())
     if not ns.J.AlbumPathWhole() then
@@ -308,8 +328,10 @@ function ns.Slash(input)
     end
 
   else
+    -- the short word beside each long one, in brackets: "sound (snd)"
     ns.Print("%s", T.text("muted",
-      "/bism · all · now [note] · journal · map · year [all] · group · options · on|off <thing> · every boss|death"
-      .. " · pins mine|all|off · onthisday · clean · loot <2-5> · gap <secs> · sound · clear · zones · status · heard · db"))
+      "/bism · all · now [note] · journal (book) · map · year [all] · group (grp) · options (opt) · on|off <thing>"
+      .. " · every (each) boss|death · pins mine|all|off · onthisday (otd) · clean (cln) · loot <2-5> · gap <secs>"
+      .. " · sound (snd) · clear (clr) · zones (zone) · status (stat) · heard (hear) · path · db"))
   end
 end

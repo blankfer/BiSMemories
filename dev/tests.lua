@@ -1775,4 +1775,185 @@ end)()
   wipe()
 end)()
 
+-- ===================================================================== 6 Nov: the five UI rules
+-- Arn, 6 Nov 2026, with BiS Tools' processing window as the model: short words for every long command,
+-- everything clickable POPS under the mouse, Escape closes every window, small text gets bigger, and the
+-- main window shows which version (and which deployed copy) it is.
+;(function()
+  local J, M, T = NS.J, NS.M, NS.T
+  local log = M.Log()
+  local d = NS.DB()
+  local function wipe() for k = #log, 1, -1 do log[k] = nil end end
+  local function near(c, name)
+    local r, g, b = T.rgb(name)
+    return type(c) == "table" and math.abs(c[1] - r) < 0.01 and math.abs(c[2] - g) < 0.01 and math.abs(c[3] - b) < 0.01
+  end
+  local function run(line) said = {} NS.Slash(line) return table.concat(said, " | ") end
+
+  H.section("6 Nov: short words - every command longer than 4 letters answers to 4 or fewer")
+  local SHORT = NS.SHORT or {}
+  -- the words the slash code compares against, read off the file itself: a new long command without a
+  -- short word goes red here the day it is added
+  local src = bytes(ROOT .. "/Core/Slash.lua") or ""
+  local words, seen = {}, {}
+  for w in src:gmatch('cmd == "(%a+)"') do if not seen[w] then seen[w] = true words[#words + 1] = w end end
+  for w in pairs(NS.SLASH_WORD or {}) do if not seen[w] then seen[w] = true words[#words + 1] = w end end
+  table.sort(words)
+  H.ok(#words >= 20, "the slash words were found", #words)
+  for _, w in ipairs(words) do
+    local long = NS.SlashWord and NS.SlashWord(w) or w
+    if #w > 4 and #long <= 4 then
+      H.ok(true, ("/bism %s is /bism %s"):format(w, long))          -- "where" is "path": short already
+    elseif #w > 4 then
+      local s = SHORT[long]
+      H.ok(type(s) == "string" and #s <= 4 and s ~= long, ("/bism %s has a short word"):format(w), tostring(s))
+      H.eq(NS.SlashWord and s and NS.SlashWord(s), long, ("/bism %s means /bism %s"):format(tostring(s), w))
+    end
+  end
+  -- THE SAME THING HAPPENS, not just the same name: each pair from the same start, the second run of each
+  -- puts a switch back where it was
+  for _, p in ipairs({ { "sound" }, { "clear" }, { "zones" }, { "status" }, { "heard" }, { "onthisday" },
+                       { "every", " boss" }, { "clean" }, { "group" } }) do
+    local long, arg = p[1], p[2] or ""
+    local short = SHORT[long] or long
+    local want = run(long .. arg) run(long .. arg)
+    local got = run(short .. arg) run(short .. arg)
+    H.ok(short ~= long and want ~= "" and got == want, ("/bism %s does what /bism %s does"):format(short, long), got)
+  end
+  local w = NS.CFG.Build()
+  local was = w:IsShown()
+  NS.Slash((SHORT.options or "options"))
+  H.ok(SHORT.options and w:IsShown() ~= was, "/bism " .. tostring(SHORT.options) .. " opens the options, as /bism options does")
+  NS.Slash((SHORT.options or "options"))
+  J.Hide()
+  NS.Slash(SHORT.journal or "journal")
+  H.ok(SHORT.journal and J.frame:IsShown(), "/bism " .. tostring(SHORT.journal) .. " opens the journal")
+  J.Hide()
+  local help = run("help")
+  for long, s in pairs(SHORT) do
+    H.ok(help:find(long .. " (" .. s .. ")", 1, true), ("the help shows %s (%s)"):format(long, s), help)
+  end
+
+  H.section("6 Nov: every button and row lights up under the mouse")
+  log = M.Log()                      -- `/bism clear` above put a new table in the saved log
+  wipe()
+  _G.C_Map.GetMapRectOnMap = function(_, to) if to == 947 then return 0.4, 0.6, 0.3, 0.5 end end
+  local e = { reason = "boss", detail = "Hogger", zone = "Elwynn Forest", at = os.time() - 60, char = M.Me(),
+              with = { "Kumlance Wildhammer" }, map = 1429, x = 0.5, y = 0.5 }
+  log[1] = e
+  J.everyone, J.page = nil, "memories"
+  J.Show()
+  J.Select(e)
+  local f = J.frame
+  -- `overText`: the wash is drawn over the label (a HIGHLIGHT texture, or a patch above its parent's text),
+  -- so it stays a tint and the bar does the popping
+  local function pops(b, what, overText)
+    local enter = b and b:GetScript("OnEnter")
+    H.ok(enter ~= nil, what .. ": answers the mouse")
+    if not enter then return end
+    b:Fire("OnEnter")
+    local wash, bar = b.wash, b.bar
+    local a = wash and wash:GetAlpha() or 0
+    local over = overText or (wash and (wash._layer == "HIGHLIGHT" or wash._layer == "OVERLAY"))
+    H.ok(a >= (over and 0.2 or 0.3) and a <= (over and 0.28 or 0.35), what .. ": a clear wash under the mouse", a)
+    H.ok(wash and near(wash._color, "accent"), what .. ": the wash is the accent")
+    H.ok(bar and bar:GetAlpha() == 1 and (bar._w or 0) >= 2 and (bar._w or 0) <= 3, what .. ": a 2-3 px bar lit on the left",
+         bar and bar._w)
+    H.ok(bar and near(bar._color, "accent"), what .. ": the bar is the accent")
+    b:Fire("OnLeave")
+    H.ok(wash and wash:GetAlpha() == 0 and bar and bar:GetAlpha() == 0, what .. ": and dark again when the mouse leaves")
+  end
+  for i, b in ipairs(f.tabs) do pops(b, "the " .. b.name .. " tab") end
+  pops(f.who, "the this-character button")
+  -- the label to full brightness, and back to what it was
+  local other = f.tabs[2]
+  other:Fire("OnEnter")
+  H.ok(near(other.word._color, "ink"), "a tab's word goes bright under the mouse")
+  other:Fire("OnLeave")
+  H.ok(near(other.word._color, "ink2"), "and back to its resting colour")
+  H.ok(near(f.tabs[1].word._color, "accent"), "the chosen tab is the accent")
+  f.tabs[1]:Fire("OnEnter") f.tabs[1]:Fire("OnLeave")
+  H.ok(near(f.tabs[1].word._color, "accent"), "and stays the accent after a hover")
+  local hit, row
+  for i, h in ipairs(f.hits) do if h.entry == e then hit, row = h, i end end
+  pops(hit, "a memory's row", true)
+  if hit then
+    hit:Fire("OnEnter")
+    H.ok(near(f.rows[row]._color, "ink"), "the row's words go bright under the mouse")
+    hit:Fire("OnLeave")
+    H.ok(near(f.rows[row]._color, "ink2"), "and rest a little dimmer")
+  end
+  local headHit = f.hits[1].entry == nil and f.hits[1] or nil
+  if headHit then
+    headHit:Fire("OnEnter")
+    H.ok(not headHit.wash or headHit.wash:GetAlpha() == 0, "a night's heading is no button: it does not light up")
+    headHit:Fire("OnLeave")
+  end
+  pops(f.withBtns[1], "a name under 'with'")
+  pops(J.Toast(e, "A year ago today"), "the on-this-day card")
+  J.toast:Hide()
+  -- the map's dots and the world map's pins: a modest light - the edge goes to the accent, the map is not washed
+  J.Tab("map")
+  local dot = f.map.dots and f.map.dots[1]
+  H.ok(dot ~= nil, "the map has a dot to hover")
+  if dot then
+    dot:Fire("OnEnter")
+    H.ok(near(dot.edge._color, "accent"), "a map dot's edge lights under the mouse")
+    dot:Fire("OnLeave")
+    H.ok(dot.edge._color and dot.edge._color[1] == 0 and dot.edge._color[2] == 0, "and goes back to black")
+  end
+  J.Tab("memories")
+  d.pins = "mine"
+  NS.Pins.Update()
+  local pin = NS.Pins.pins[e]
+  H.ok(pin ~= nil, "the world map has a pin to hover")
+  if pin then
+    pin:Fire("OnEnter")
+    H.ok(near(pin.edge._color, "accent"), "a world-map pin's edge lights under the mouse")
+    pin:Fire("OnLeave")
+    H.ok(pin.edge._color and pin.edge._color[1] == 0, "and goes back to black")
+  end
+
+  H.section("6 Nov: Escape closes every window, and small text is bigger")
+  local listed = {}
+  for _, n in ipairs(_G.UISpecialFrames) do listed[n] = true end
+  H.ok(listed.BiSMemoriesJournal, "Escape closes the journal")
+  H.ok(listed.BiSMemoriesOptions, "Escape closes the options")
+  H.ok((NS.CFG.SCALE or 1) >= 1.2, "the options window (9 pt text) is drawn at least 20% bigger", NS.CFG.SCALE)
+
+  H.section("6 Nov: the journal shows its version - faint, in the foot, with the deploy stamp")
+  local keep = NS.BUILD
+  NS.BUILD = "feat/ui-rules@abc1234 1106-1841"
+  J.Refresh()
+  H.eq(f.build and strip(f.build._text), TOC_VERSION .. "  abc1234 1106-1841", "a deployed copy: the version, its commit and when")
+  fitsIn(f, "the journal, with its deploy stamp")
+  NS.BUILD = "main@1234567+ 1106-0900"
+  J.Refresh()
+  H.eq(f.build and strip(f.build._text), TOC_VERSION .. "  1234567+ 1106-0900", "an uncommitted copy keeps its +")
+  NS.BUILD = nil
+  J.Refresh()
+  H.eq(f.build and strip(f.build._text), TOC_VERSION, "a released copy: the version alone")
+  H.ok(f.build and f.build:GetAlpha() < 1, "and faint")
+  local p = f.build and f.build._points and f.build._points[1]
+  H.ok(p and p.point:find("BOTTOM") ~= nil, "in the foot, not the header bar")
+  -- ONE BAR, ONE LABEL: the header keeps "BiS> Memories" as its only label
+  local inBar = 0
+  for _, r in ipairs(f._regions or {}) do
+    local q = r._size and r._points and r._points[1]
+    if q and q.point:find("TOP") and q.y > -J.HEAD then inBar = inBar + 1 end
+  end
+  H.eq(inBar, 1, "the header bar has one label")
+  -- read from the TOC copy deploy.sh stamped
+  local realMeta = _G.GetAddOnMetadata
+  _G.GetAddOnMetadata = function(a, key) if key == "X-BiS-Build" then return "main@1234567+ 1106-0900" end return realMeta(a, key) end
+  H.eq(NS.ReadBuild and NS.ReadBuild(), "main@1234567+ 1106-0900", "the stamp is read from the TOC copy")
+  _G.GetAddOnMetadata = function(a, key) if key == "X-BiS-Build" then return "" end return realMeta(a, key) end
+  H.eq(NS.ReadBuild and NS.ReadBuild(), nil, "an empty stamp is no stamp")
+  _G.GetAddOnMetadata = realMeta
+  H.eq(NS.ReadBuild and NS.ReadBuild(), nil, "and a released copy has none")
+  NS.BUILD = keep
+  J.Hide()
+  wipe()
+end)()
+
 H.report()
