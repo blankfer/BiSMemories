@@ -166,6 +166,15 @@ local function newFrame(ftype, name, parent)
 
     function fr:GetName() return self._name end
     function fr:GetParent() return self._parent end
+    -- A FRAME KEEPS ITS PARENT AND ITS SCALE, SCALE STARTING AT 1 (8 Nov 2026, the BiS> page: the catch-all
+    -- answered SetParent/SetScale with silence and GetScale with nil, so "the page leaves the options window
+    -- alone" was untestable - a page that re-parented and shrank it would have passed).
+    function fr:SetParent(p) self._parent = p end
+    function fr:SetScale(s)
+        if not isnum(s) or s <= 0 then error("SetScale needs a number above 0", 0) end
+        self._scale = s
+    end
+    function fr:GetScale() return self._scale or 1 end
     function fr:SetSize(w, h) self._w, self._h = w, h end
     function fr:SetWidth(w) self._w = w end
     function fr:SetHeight(h) self._h = h end

@@ -5,8 +5,9 @@
   The window is BiSTheme's shared kit (Libs\BiSTheme\Options.lua), in two columns the way BiS Healing
   builds them (its UI/options.lua): each column built as the kit builds it, then each row pinned into its
   column. 25% bigger, as Healing's - the kit's 8 pt is hard to read. The button is BiSTheme's shared
-  minimap button (Libs\BiSTheme\Minimap.lua): left-click the journal, right-click the options. Since 1.0
-  (7 Nov 2026) the window also lives inside the game's own options, as BiS> Memories (Libs\BiSTheme\Settings.lua).
+  minimap button (Libs\BiSTheme\Minimap.lua): left-click the journal, right-click this window (again: closes it).
+  Since 1.0 the game's own options also have a BiS> Memories page (Libs\BiSTheme\Settings.lua) - what is on, and a
+  button that opens this window as it always was (8 Nov 2026: the page no longer holds it inside).
 ]]
 local ADDON, ns = ...
 local M = ns.M
@@ -155,8 +156,9 @@ function CFG.MinimapDB()
   return db.minimap
 end
 
---- THE FAMILY STANDARD (Forever 1.0, 7 Nov 2026 - Minimap.lua minor 4): left-click = the journal, right-click = the
---- options (BiS> Memories in the game's options; our own window on a client without that panel), drag = move.
+--- THE FAMILY STANDARD (Forever 1.0 - Minimap.lua minor 5, 8 Nov 2026): left-click = the journal, right-click = our
+--- own options window as a toggle (right-click again closes it; never the game's options - Arn, 7 Nov live: "i liked
+--- these old option windows that opened without opening the game option window"), drag = move.
 --- The kit's own click and tooltip, so every BiS button says and does the same.
 function CFG.BuildMinimap()
   if CFG.button then return CFG.button end
@@ -182,8 +184,9 @@ function CFG.Status()
   return ("%d of %d moments - sound %s"):format(on, #M.TRIGGERS, d.sound and "on" or "off")
 end
 
---- BiS> Memories under the game's Esc > Options > AddOns (BiSTheme's Settings.lua): our options window held
---- inside it, a button to the journal, the API for other addon authors. Nil on a client without that panel.
+--- BiS> Memories under the game's Esc > Options > AddOns (BiSTheme's Settings.lua minor 2): what is on, a button
+--- to our options window (shown as it always was, never re-parented or shrunk), a button to the journal, the API
+--- for other addon authors. Nil on a client without that panel.
 function CFG.RegisterPage()
   local T = BiSTheme
   if not (T and T.SettingsPage) then return nil end

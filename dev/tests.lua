@@ -2132,7 +2132,21 @@ end)()
   local okSt, st = pcall(spec.status or error)
   H.eq(okSt and st, "4 of 12 moments - sound off", "the front page: what is on, in a few words")
   local okW, win = pcall(spec.window or error)
-  H.ok(okW and win == CFG.Build(), "the page holds the options window")
+  H.ok(okW and win == CFG.Build(), "the page knows the options window")
+  -- 8 Nov (Settings minor 2): showing the page leaves our window exactly as it is - same parent, same scale,
+  -- still hidden - and a button on the page opens it the way it always opened
+  local ow = CFG.Build()
+  ow:Hide()
+  local owParent, owScale = ow:GetParent(), ow:GetScale()
+  if page and page.frame then page.frame:Fire("OnShow") end
+  H.ok(ow:GetParent() == owParent and ow:GetScale() == owScale, "showing the page: the window keeps its parent and its scale")
+  H.ok(not ow:IsShown(), "showing the page: the window stays hidden")
+  local optBtn = page and page.frame and page.frame.optBtn
+  H.ok(optBtn and optBtn:IsShown(), "the page has a button: the options window")
+  if optBtn then optBtn:Fire("OnClick", "LeftButton") end
+  H.ok(ow:IsShown(), "which shows the options window")
+  H.ok(ow:GetParent() == owParent and ow:GetScale() == owScale, "as it always was")
+  ow:Hide()
   H.eq(spec.open and spec.open.label, "your memories", "its big button: your memories")
   J.Hide()
   if spec.open then spec.open.func() end
@@ -2155,9 +2169,16 @@ end)()
   b:Fire("OnClick", "LeftButton")
   H.ok(J.frame:IsShown(), "left-click: your memories")
   J.Hide()
+  -- 8 Nov (Minimap minor 5): right-click = our own options window, a toggle; never the game's options
+  local ow2 = CFG.Build()
+  ow2:Hide()
+  local openedBefore = #opened
   b:Fire("OnClick", "RightButton")
-  H.eq(opened[#opened], "BiS> Memories", "right-click: its page under BiS>")
+  H.ok(ow2:IsShown(), "right-click: our own options window")
   H.ok(not J.frame:IsShown(), "and not the journal")
+  b:Fire("OnClick", "RightButton")
+  H.ok(not ow2:IsShown(), "a second right-click closes it")
+  H.eq(#opened, openedBefore, "the right-click never opens the game's options")
   local tip, realAdd = {}, GameTooltip.AddLine
   GameTooltip.AddLine = function(_, t) tip[#tip + 1] = strip(t) end
   b:Fire("OnEnter")

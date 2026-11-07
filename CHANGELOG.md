@@ -6,6 +6,7 @@
 - **A quiet start for new players.** A fresh install takes pictures of the big moments only: level ups, a boss's first kill (and your fastest), achievements, and firsts like your first mount. Loot, deaths, duels, new places, exalted, the weekly candid, gamba wins, group photos, the camera click, the on-this-day message and the world-map pins all start off - switch on whichever you want.
 - **All the options in one place.** Press Escape, then Options, then AddOns, and find **BiS>**: every BiS addon you have is listed there, and **BiS> Memories** holds every setting, with a button that opens your memories.
 - **The minimap button, the same as every BiS addon.** Left-click opens your memories; right-click opens the options.
+- Minimap right-click opens the options window again (click again to close); the BiS> page no longer squeezes that window inside it.
 - **Group photos started by others have their own switch.** "others can call one" decides whether someone else's `/bism group` can put a countdown on your screen and take your picture. Off for new players, on for everyone who had the addon.
 - **Fixed: clicking a name inside a dungeon or raid.** The game's player menu opened from a memory inside an instance could break the game's own menus. Inside an instance it now stays shut and one line tells you to whisper them (`/w Name`) instead; out in the world it opens as before.
 
