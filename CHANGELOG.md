@@ -1,5 +1,9 @@
 # BiSMemories
 
+## Unreleased
+
+- **Clearer windows.** In the options window (and the minimap menu) every button, box and row lights up under the mouse, the window is 20% bigger, and the bottom strip shows which version you are on until you hover a setting.
+
 ## 0.9.4
 
 - **A real camera shutter.** Every memory now clicks with the game's own screenshot camera sound instead of a menu click. It plays on the sound-effects channel, so muting sound effects mutes it too. `/bism` options still switch the sound off.
