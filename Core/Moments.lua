@@ -144,6 +144,8 @@ function M.GroupPhoto(secs)
   secs = math.max(2, math.min(10, math.floor(tonumber(secs) or M.GROUP_SECS)))
   if not (IsInGroup and IsInGroup()) then return nil, "not in a group" end
   if M.counting then return nil, "already counting" end
+  -- switched off (a new install since 1.0): nothing sent, no chat line, no countdown that ends in no picture
+  if db().group == false then return nil, "group photos are off - switch them on in the options" end
   local lib = rawget(_G, "LibBiSComm")
   if lib and lib.Send then pcall(lib.Send, lib, M.GROUP_MOD, "SNAP", tostring(secs)) end
   -- the people without a BiS addon hear it in chat; not while the game holds addon chat back
@@ -175,11 +177,14 @@ function M.Countdown(secs, by)
   return true
 end
 
--- the call from someone else's /bism group, on the shared BiS channel (a group channel only)
+-- the call from someone else's /bism group, on the shared BiS channel (a group channel only). Since 1.0 only
+-- when the player lets others start it (`groupOthers`: off on a new install, kept on for everyone who had it) -
+-- else anyone in the group could put a countdown on your screen and take your picture.
 do
   local lib = rawget(_G, "LibBiSComm")
   if lib and lib.RegisterHandler then
     lib:RegisterHandler(M.GROUP_MOD, "SNAP", function(sender, secs)
+      if db().groupOthers ~= true then return end
       local me = UnitName and UnitName("player")
       if type(sender) == "string" and me and (sender == me or sender:find("^" .. tostring(me) .. "%-")) then return end
       M.Countdown(tonumber(secs) or M.GROUP_SECS, sender)

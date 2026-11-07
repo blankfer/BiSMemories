@@ -5,8 +5,8 @@
   The window is BiSTheme's shared kit (Libs\BiSTheme\Options.lua), in two columns the way BiS Healing
   builds them (its UI/options.lua): each column built as the kit builds it, then each row pinned into its
   column. 25% bigger, as Healing's - the kit's 8 pt is hard to read. The button is BiSTheme's shared
-  minimap button (Libs\BiSTheme\Minimap.lua): any click opens the journal; the options are a row in it
-  and `/bism options`.
+  minimap button (Libs\BiSTheme\Minimap.lua): left-click the journal, right-click the options. Since 1.0
+  (7 Nov 2026) the window also lives inside the game's own options, as BiS> Memories (Libs\BiSTheme\Settings.lua).
 ]]
 local ADDON, ns = ...
 local M = ns.M
@@ -37,7 +37,10 @@ function CFG.Sections()
       toggle("candid", "a candid a week", "One picture a week at a random moment - the half of a year nobody photographs."),
       toggle("first", "firsts", "Your first mount, a new mount, learning to ride."),
       toggle("gamba", "gamba wins", "Your biggest win yet at a BiS Gamba table."),
-      toggle("group", "group photos", "When someone in your group calls /bism group."),
+      toggle("group", "group photos", "Your picture in a group photo - the one you call with /bism group, and others' when the next switch lets them."),
+      { key = "groupOthers", kind = "toggle", label = "others can call one",
+        help = "Someone else in your group may start the countdown on your screen and take your picture (/bism group).",
+        get = function(db) return db.groupOthers == true end, set = function(db, on) db.groupOthers = on and true or false end },
     } },
     { title = "the camera", column = 2, options = {
       toggle("clean", "hide the interface", "The interface hidden for the instant of the picture, like Alt+Z, then back."),
@@ -152,40 +155,52 @@ function CFG.MinimapDB()
   return db.minimap
 end
 
-local function tip(self)
-  if self.edge then self.edge:set("accent", 1) end
-  if not GameTooltip then return end
-  GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-  GameTooltip:AddLine("BiS> Memories")
-  GameTooltip:AddLine("click  your memories, the map, the year", 0.6, 0.6, 0.6)
-  GameTooltip:AddLine("right-click  options", 0.6, 0.6, 0.6)
-  GameTooltip:AddLine("drag  move me round the edge", 0.6, 0.6, 0.6)
-  GameTooltip:Show()
-end
-
-function CFG.Click(_, which)
-  local b = CFG.button
-  if b and b.Unbury then b:Unbury() end
-  if b and b.CloseMenu then b:CloseMenu() end
-  if b and b.dragging then return end
-  if which == "RightButton" then return CFG.Toggle() end
-  if ns.J then ns.J.Toggle() end
-end
-
+--- THE FAMILY STANDARD (Forever 1.0, 7 Nov 2026 - Minimap.lua minor 4): left-click = the journal, right-click = the
+--- options (BiS> Memories in the game's options; our own window on a client without that panel), drag = move.
+--- The kit's own click and tooltip, so every BiS button says and does the same.
 function CFG.BuildMinimap()
   if CFG.button then return CFG.button end
   if not (BiSTheme and BiSTheme.Minimap) then return nil end
   CFG.button = BiSTheme.Minimap("BiSMemories", {
-    icon  = "Interface\\Icons\\INV_Misc_Spyglass_03",
-    label = "Memories",
-    db    = CFG.MinimapDB(),
-    menu  = function() return {} end,
+    icon      = "Interface\\Icons\\INV_Misc_Spyglass_03",
+    label     = "Memories",
+    db        = CFG.MinimapDB(),
+    onLeft    = function() if ns.J then ns.J.Toggle() end end,
+    leftLabel = "your memories",
+    onRight   = function() CFG.Toggle() end,
   })
-  if CFG.button and CFG.button.SetScript then
-    CFG.button:SetScript("OnClick", CFG.Click)
-    CFG.button:SetScript("OnEnter", tip)
-  end
   return CFG.button
+end
+
+--------------------------------------------------------------- the BiS> page --
+
+--- What is on, in a few words, for the BiS> front page: "4 of 12 moments - sound off".
+function CFG.Status()
+  local d = ns.DB()
+  local on = 0
+  for _, t in ipairs(M.TRIGGERS) do if d[t.key] ~= false then on = on + 1 end end
+  return ("%d of %d moments - sound %s"):format(on, #M.TRIGGERS, d.sound and "on" or "off")
+end
+
+--- BiS> Memories under the game's Esc > Options > AddOns (BiSTheme's Settings.lua): our options window held
+--- inside it, a button to the journal, the API for other addon authors. Nil on a client without that panel.
+function CFG.RegisterPage()
+  local T = BiSTheme
+  if not (T and T.SettingsPage) then return nil end
+  return T.SettingsPage("BiSMemories", {
+    title  = "Memories",
+    about  = "A screenshot when something worth remembering happens, and a note of what it was. A new install "
+      .. "takes the big moments only - level ups, first kills, achievements, firsts. Switch on the rest here.",
+    status = CFG.Status,
+    window = function()
+      local f = CFG.Build()
+      if f and f.Paint then f:Paint() end
+      return f
+    end,
+    open   = { label = "your memories", func = function() if ns.J then ns.J.Show() end end },
+    api    = rawget(_G, "BiSMemoriesAPI") and { name = "BiSMemoriesAPI",
+      about = "read the album's memories, ask for one of your own, hear when a picture is taken" } or nil,
+  })
 end
 
 function CFG.SetMinimap(on)
@@ -197,4 +212,7 @@ end
 
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_LOGIN")
-ev:SetScript("OnEvent", function() CFG.BuildMinimap() end)
+ev:SetScript("OnEvent", function()
+  CFG.RegisterPage()     -- first, so the button's right-click and tooltip know the page is there
+  CFG.BuildMinimap()
+end)

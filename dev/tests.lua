@@ -100,6 +100,11 @@ do
 end
 fire("ADDON_LOADED", "BiSMemories")
 H.ok(type(_G.BiSMemoriesDB) == "table" and _G.BiSMemoriesDB.comm == true, "SavedVariables shaped with defaults on first load")
+-- A NEW INSTALL STARTS QUIET since 1.0 (the "7 Nov: Forever 1.0" sections at the end prove it). The feature tests
+-- below are about what each switch DOES, so the suite's player switches everything on first - every extra at the
+-- value an existing player keeps (NS.WAS).
+H.ok(NS.firstRun == "new" and _G.BiSMemoriesDB.sound == false, "the suite's first login is a new install, quiet")
+for k, v in pairs(NS.WAS) do _G.BiSMemoriesDB[k] = v end
 
 H.section("embedded libs are canon (drift fences)")
 H.eq(_G.LibBiSComm.MINOR, 18, "LibBiSComm minor 18")
@@ -1997,6 +2002,205 @@ end)()
   NS.BUILD = keep
   J.Hide()
   wipe()
+end)()
+
+-- ===================================================================== 7 Nov: Forever 1.0
+-- Arn, 7 Nov 2026: "the core functionality when you install this add-on is you expected to take some screenshots,
+-- but we can get into the nitty gritty in that big option menu". A NEW install takes the big moments' pictures and
+-- nothing else; a player who already has the addon keeps every switch exactly as it was.
+;(function()
+  local M, CFG, J, T = NS.M, NS.CFG, NS.J, _G.BiSTheme
+  local CORE = { "levelup", "boss", "achievement", "first" }
+  local QUIET = { "loot", "death", "duel", "zone", "exalted", "candid", "gamba", "group" }
+  local keepDB, keepChar = _G.BiSMemoriesDB, _G.BiSMemoriesCharDB
+  -- a login: the client hands back these two (nil = nothing came back), then ADDON_LOADED
+  local function login(acct, char)
+    _G.BiSMemoriesDB, _G.BiSMemoriesCharDB = acct, char
+    fire("ADDON_LOADED", "BiSMemories")
+    return _G.BiSMemoriesDB
+  end
+  local function scalars(t)
+    local out = {}
+    for k, v in pairs(t) do if type(v) ~= "table" then out[k] = v end end
+    return out
+  end
+  local function same(a, b)
+    for k, v in pairs(a) do if b[k] ~= v then return false, k end end
+    for k, v in pairs(b) do if a[k] ~= v then return false, k end end
+    return true
+  end
+
+  H.section("7 Nov: Forever 1.0 - a new install starts quiet, the big moments on")
+  local d = login(nil, nil)
+  for _, k in ipairs(CORE) do H.eq(d[k], true, "new install: " .. k .. " on - the addon's main job") end
+  H.eq(d.clean, true, "new install: the interface still steps out of the picture")
+  for _, k in ipairs(QUIET) do H.eq(d[k], false, "new install: " .. k .. " off until switched on") end
+  H.eq(d.sound, false, "new install: no camera click")
+  H.eq(d.onThisDay, false, "new install: no on-this-day line or card at login")
+  H.eq(d.pins, "off", "new install: nothing on the world map")
+  H.eq(d.groupOthers, false, "new install: nobody else can start your countdown")
+  H.eq(d.forever10, true, "and the stamp, so this never runs again")
+  -- quiet in practice, not just in the table
+  H.eq(select(2, M.Shoot("loot", "[Thunderfury]")), "off", "a loot line takes no picture")
+  H.eq(M.OnThisDay(), nil, "the login says nothing")
+  M.counting = nil
+  local h = _G.LibBiSComm.handlers and _G.LibBiSComm.handlers.MEM and _G.LibBiSComm.handlers.MEM.SNAP
+  H.ok(type(h) == "function", "the group call is still listened for")
+  if h then h("Stranger", "2") end
+  H.ok(not M.counting, "someone else's /bism group starts nothing on a new install's screen")
+  local realGroup, wire = _G.IsInGroup, #H.wire
+  _G.IsInGroup = function() return true end
+  local ok, why = M.GroupPhoto(3)
+  _G.IsInGroup = realGroup
+  H.ok(not ok and tostring(why):find("off", 1, true) and #H.wire == wire and not M.counting,
+       "your own call with group photos off: says so, sends nothing", tostring(why))
+
+  H.section("7 Nov: Forever 1.0 - an existing save keeps every feature as it was")
+  -- a 0.10.1 save the way that version wrote it, minus keys an older one never stored (nil there meant ON),
+  -- and one switch the player chose
+  d = login({ comm = true, levelup = true, boss = true, loot = false, death = true,
+              log = { { at = 5, reason = "zone", detail = "Durotar" } } }, nil)
+  H.eq(d.loot, false, "the player's own 'off' stays off")
+  for _, k in ipairs(QUIET) do
+    if k ~= "loot" then H.eq(d[k], true, "existing: " .. k .. " still on, written down now") end
+  end
+  H.eq(d.sound, true, "existing: the click still clicks")
+  H.eq(d.onThisDay, true, "existing: on this day still comes")
+  H.eq(d.pins, "mine", "existing: your pins still on the map")
+  H.eq(d.groupOthers, true, "existing: the group's call still starts your countdown")
+  H.eq(d.forever10, true, "stamped")
+  M.counting = nil
+  if h then h("Stranger", "2") end
+  H.ok(M.counting, "and someone else's call counts down here, as it did")
+  for _ = 1, 3 do runTimers() end
+  M.counting = nil
+  -- a player who had the extras off keeps them off
+  d = login({ comm = true, sound = false, onThisDay = false, pins = "all", log = { { at = 6, reason = "boss" } } }, nil)
+  H.ok(d.sound == false and d.onThisDay == false and d.pins == "all", "an existing 'off' or 'all' is never touched")
+  -- THE FOREVER LOSS: the account-wide file came back empty, the per-character copy did not. A player, not new.
+  d = login(nil, NS.Serialize({ comm = true, log = { { at = 7, reason = "boss", detail = "Hogger" } } }))
+  H.ok(d.zone == true and d.sound == true and d.pins == "mine" and d.groupOthers == true,
+       "only the per-character copy came back: still an existing player, nothing turned off")
+  d = login(nil, NS.Serialize({ zones = { Mulgore = true } }))
+  H.ok(d.zone == true and d.groupOthers == true, "a copy with places and no pictures yet: an existing player too")
+
+  H.section("7 Nov: Forever 1.0 - a second login changes nothing")
+  d = login({ comm = true, log = { { at = 8, reason = "boss" } } }, nil)
+  local once = scalars(d)
+  d = login(d, nil)
+  local okSame, diff = same(once, scalars(d))
+  H.ok(okSame, "an existing save: the second 1.0 login writes nothing new", diff)
+  -- a new install, then the player switches things: the next login keeps their choice
+  d = login(nil, nil)
+  d.loot, d.sound, d.levelup = true, true, false
+  once = scalars(d)
+  d = login(d, NS.Serialize(d))
+  okSame, diff = same(once, scalars(d))
+  H.ok(okSame, "a new install's own choices survive the next login", diff)
+  -- a stamped save where a switch went missing is NOT frozen back on (the stamp means: done)
+  d = login({ comm = true, forever10 = true, log = { { at = 9, reason = "boss" } } }, nil)
+  H.ok(d.zone == false and d.sound == false and d.groupOthers == false, "after the stamp, a missing switch takes today's default")
+
+  H.section("7 Nov: one options home - BiS> Memories in the game's own options")
+  d = login(nil, nil)
+  local keepS, keepRoot, keepPage = rawget(_G, "Settings"), T.settingsRoot, T.settingsPages.BiSMemories
+  local reg, opened, nextId = {}, {}, 0
+  local function Category(name)
+    nextId = nextId + 1
+    local c = { name = name, id = nextId }
+    function c:GetID() return self.id end
+    reg[c.id] = c
+    return c
+  end
+  _G.Settings = {
+    RegisterCanvasLayoutCategory = function(frame, name) local c = Category(name) c.frame = frame return c, {} end,
+    RegisterAddOnCategory = function(c) c.addon = true end,
+    RegisterCanvasLayoutSubcategory = function(parent, frame, name)
+      if not (parent and parent.addon) then error("parent category is not registered") end
+      local c = Category(name) c.frame, c.parentCat = frame, parent
+      return c, {}
+    end,
+    OpenToCategory = function(id) if not reg[id] then return false end opened[#opened + 1] = reg[id].name return true end,
+  }
+  T.settingsRoot, T.settingsPages.BiSMemories = nil, nil
+  fire("PLAYER_LOGIN")
+  local page = T.settingsPages.BiSMemories
+  H.ok(page and page.category and page.spec and page.spec.title == "Memories", "registered at login: BiS> Memories")
+  local spec = page and page.spec or {}
+  H.eq(spec.api and spec.api.name, "BiSMemoriesAPI", "its API named for other addon authors")
+  H.ok(type(spec.about) == "string" and #spec.about > 20, "a line saying what it is for")
+  local okSt, st = pcall(spec.status or error)
+  H.eq(okSt and st, "4 of 12 moments - sound off", "the front page: what is on, in a few words")
+  local okW, win = pcall(spec.window or error)
+  H.ok(okW and win == CFG.Build(), "the page holds the options window")
+  H.eq(spec.open and spec.open.label, "your memories", "its big button: your memories")
+  J.Hide()
+  if spec.open then spec.open.func() end
+  H.ok(J.frame:IsShown(), "which opens the journal")
+  J.Hide()
+  -- every switch a new install starts off has a row a player can find
+  local rows = {}
+  for _, r in ipairs(CFG.Rows()) do rows[r.key] = r end
+  for _, k in ipairs(QUIET) do H.ok(rows[k] and rows[k].kind == "toggle", "a row for " .. k) end
+  for _, k in ipairs({ "sound", "onThisDay", "pins", "groupOthers" }) do H.ok(rows[k] ~= nil, "a row for " .. k) end
+  local r = rows.groupOthers
+  H.ok(r and r.get(d) == false, "the group row reads off on a new install")
+  if r then r.set(d, true) end
+  H.eq(d.groupOthers, true, "and switches it on")
+  if r then r.set(d, false) end
+
+  H.section("7 Nov: the minimap - left your memories, right the options")
+  local b = CFG.button
+  J.Hide()
+  b:Fire("OnClick", "LeftButton")
+  H.ok(J.frame:IsShown(), "left-click: your memories")
+  J.Hide()
+  b:Fire("OnClick", "RightButton")
+  H.eq(opened[#opened], "BiS> Memories", "right-click: its page under BiS>")
+  H.ok(not J.frame:IsShown(), "and not the journal")
+  local tip, realAdd = {}, GameTooltip.AddLine
+  GameTooltip.AddLine = function(_, t) tip[#tip + 1] = strip(t) end
+  b:Fire("OnEnter")
+  GameTooltip.AddLine = realAdd
+  local said3 = table.concat(tip, " | ")
+  H.ok(said3:find("left-click  your memories", 1, true) and said3:find("right-click  options", 1, true)
+       and said3:find("drag  move", 1, true), "the tooltip says exactly that", said3)
+  -- no game options panel (an older client): the right-click falls back to our own window
+  _G.Settings = nil
+  local w = CFG.Build()
+  w:Hide()
+  b:Fire("OnClick", "RightButton")
+  H.ok(w:IsShown(), "no options panel: the right-click opens our own window")
+  w:Hide()
+  _G.Settings, T.settingsRoot = keepS, keepRoot
+  T.settingsPages.BiSMemories = keepPage or T.settingsPages.BiSMemories
+
+  H.section("7 Nov sweep: a name's menu, never opened by us inside an instance")
+  local menu
+  local realInst, realSecret = _G.IsInInstance, _G.issecretvalue
+  _G.UnitPopup_OpenMenu = function(kind, ctx) menu = kind .. ":" .. tostring(ctx.name) end
+  _G.FriendsFrame_ShowDropdown = function(name) menu = "dropdown:" .. tostring(name) end
+  _G.IsInInstance = function() return false, "none" end
+  H.ok(J.PlayerMenu("Kumlance Wildhammer") and menu == "FRIEND:Kumlance Wildhammer", "out in the world: the game's menu")
+  menu = nil
+  said = {}
+  _G.IsInInstance = function() return true, "party" end
+  H.ok(not J.PlayerMenu("Kumlance Wildhammer") and menu == nil, "in a dungeon: no menu (ours would break the game's own)")
+  H.ok(#said == 1 and said[1]:find("Kumlance", 1, true), "and one line saying why", said[1])
+  local secret = setmetatable({}, { __eq = function() error("secret value: refused", 0) end,
+                                    __tostring = function() error("secret value: refused", 0) end })
+  _G.issecretvalue = function(v) return v == nil and false or rawequal(v, secret) end
+  _G.IsInInstance = function() return secret, "party" end
+  said = {}
+  local okP, got = pcall(J.PlayerMenu, "Kumlance Wildhammer")
+  H.ok(okP and not got and menu == nil, "a hidden answer is not a 'no': no menu", tostring(got))
+  _G.IsInInstance = function() error("no such call", 0) end
+  okP, got = pcall(J.PlayerMenu, "Kumlance Wildhammer")
+  H.ok(okP and not got and menu == nil, "a refusing client: no menu, no error")
+  _G.IsInInstance, _G.issecretvalue = realInst, realSecret
+  _G.UnitPopup_OpenMenu, _G.FriendsFrame_ShowDropdown = nil, nil
+
+  _G.BiSMemoriesDB, _G.BiSMemoriesCharDB = keepDB, keepChar
 end)()
 
 H.report()

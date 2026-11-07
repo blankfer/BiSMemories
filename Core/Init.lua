@@ -156,6 +156,28 @@ function ns.MirrorIn()
   return true
 end
 
+--- FOREVER 1.0 (Arn, 7 Nov 2026: "everything shouldn't start off per se ... the core functionality when you install
+--- this add-on is you expected to take some screenshots"; and "everybody that already has the addons installed, I
+--- don't wanna change default settings that they have on"). ns.DEFAULTS now carries what a NEW install starts with -
+--- the big moments on, the extras off. An EXISTING save gets, once, every one of those extras it has no value for,
+--- at the value 0.10.1 would have filled in (ns.WAS, Memories.lua) - so nothing it had changes. `acct`/`char` are the
+--- two saved tables AS THE CLIENT HANDED THEM BACK, before the rescue and the defaults: either one with anything in
+--- it is a player who had the addon (Forever once handed back no account-wide file at all - the per-character copy
+--- is the witness). Runs after MirrorIn, before db(). Answers "new", "frozen" or nil (already stamped).
+function ns.Forever10(acct, char)
+  if type(char) == "string" then char = ns.Deserialize(char) end
+  local existing = has(acct) or has(char)
+  BiSMemoriesDB = type(BiSMemoriesDB) == "table" and BiSMemoriesDB or {}
+  local d = BiSMemoriesDB
+  if d.forever10 then return nil end
+  d.forever10 = true
+  if not existing then return "new" end          -- db() writes the quiet defaults in a moment
+  for k, v in pairs(ns.WAS or {}) do
+    if d[k] == nil then d[k] = v end
+  end
+  return "frozen"
+end
+
 -- the shared BiS channel: no setting of this addon may gate it; only /biscomm off does,
 -- and that choice survives a logout here
 ns.Comm = {}
@@ -186,7 +208,9 @@ f:SetScript("OnEvent", function(_, event, name)
       char = (type(BiSMemoriesCharDB) == "table" and BiSMemoriesCharDB.stamp)
              or (type(BiSMemoriesCharDB) == "string" and tonumber(BiSMemoriesCharDB:match('%["stamp"%]=(%d+)'))) or nil,
     }
+    local acct0, char0 = BiSMemoriesDB, BiSMemoriesCharDB   -- as the client handed them back
     ns.rescued = ns.MirrorIn()                       -- before db(), so the log is there to find
+    ns.firstRun = ns.Forever10(acct0, char0)         -- before db() too: a new install, or an old save frozen
     db()
     ns.Comm.Boot()
     if ns.M and ns.M.Start then ns.M.Start() end     -- the camera, once the DB exists
