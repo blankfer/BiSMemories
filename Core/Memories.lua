@@ -22,19 +22,21 @@ ns.M = M
 
 -- What is worth a photograph. Each is a switch in the DB, and `/bism off boss` turns one off. `word` is
 -- the kind in plain words (Arn, 21 Oct review: the journal and the album printed "levelup").
+-- `on` is what a NEW install starts with (Forever 1.0, 7 Nov 2026: the big moments only - see ns.WAS below for
+-- what an existing player keeps).
 local TRIGGERS = {
   { key = "levelup",     label = "levelling up",          on = true, word = "Level up" },
   { key = "boss",        label = "a boss's first kill, or your fastest", on = true, word = "Boss" },
-  { key = "loot",        label = "rare loot",             on = true, word = "Loot" },
+  { key = "loot",        label = "rare loot",             on = false, word = "Loot" },
   { key = "achievement", label = "an achievement",        on = true, word = "Achievement" },
-  { key = "death",       label = "a death worth keeping", on = true, word = "Death" },
-  { key = "duel",        label = "winning a duel",        on = true, word = "Duel" },
-  { key = "zone",        label = "a zone you have never seen", on = true, word = "New place" },
-  { key = "exalted",     label = "going exalted",         on = true, word = "Exalted" },
-  { key = "candid",      label = "one candid a week",     on = true, word = "Candid" },
+  { key = "death",       label = "a death worth keeping", on = false, word = "Death" },
+  { key = "duel",        label = "winning a duel",        on = false, word = "Duel" },
+  { key = "zone",        label = "a zone you have never seen", on = false, word = "New place" },
+  { key = "exalted",     label = "going exalted",         on = false, word = "Exalted" },
+  { key = "candid",      label = "one candid a week",     on = false, word = "Candid" },
   { key = "first",       label = "firsts: a mount, riding", on = true, word = "First" },
-  { key = "gamba",       label = "your biggest gamba win", on = true, word = "Gamba" },
-  { key = "group",       label = "group photos",          on = true, word = "Group photo" },
+  { key = "gamba",       label = "your biggest gamba win", on = false, word = "Gamba" },
+  { key = "group",       label = "group photos",          on = false, word = "Group photo" },
 }
 M.TRIGGERS = TRIGGERS
 M.WORDS = { manual = "By hand" }
@@ -43,7 +45,7 @@ for _, t in ipairs(TRIGGERS) do M.WORDS[t.key] = t.word end
 function M.Word(reason) return M.WORDS[reason or ""] or tostring(reason or "?") end
 
 local DEFAULTS = {
-  sound = true,       -- a click, so you know it fired (the client only clicks for PrintScreen)
+  sound = false,      -- a click, so you know it fired (the client only clicks for PrintScreen); 1.0: off to start
   gap = 8,            -- seconds between shots, so one loot burst is not forty pictures
   delay = 0.6,        -- let the client finish drawing the moment (the ding, the corpse, the loot)
   keep = 250,         -- entries in the log; the pictures themselves are never touched
@@ -54,11 +56,21 @@ local DEFAULTS = {
   clean = true,       -- the interface hidden for the instant of the shot (M.Clean)
   bossEvery = false,  -- true: every kill, as before 0.9.0; false: the first, and a fastest yet
   deathEvery = false, -- true: every death; false: the ones worth keeping (M.DeathWorthy)
-  onThisDay = true,   -- at login: "a year ago today..." (M.OnThisDay)
-  pins = "mine",      -- the world map's pins: "mine" (this character's), "all", "off"
+  onThisDay = false,  -- at login: "a year ago today..." (M.OnThisDay); 1.0: off to start
+  pins = "off",       -- the world map's pins: "mine" (this character's), "all", "off"; 1.0: off to start
+  groupOthers = false, -- 1.0: someone ELSE's /bism group may start your countdown and your picture
 }
 for _, t in ipairs(TRIGGERS) do DEFAULTS[t.key] = t.on end
 for k, v in pairs(DEFAULTS) do ns.DEFAULTS[k] = v end
+
+--- WHAT 0.10.1 GAVE EVERYONE (Forever 1.0, 7 Nov 2026). Every setting a new install now starts without, and the
+--- value the last version filled in when a save did not have it. Init.lua's ns.Forever10 writes these into an
+--- EXISTING save, once, wherever it has nothing - so nobody who already had the addon loses a single switch.
+ns.WAS = {
+  loot = true, death = true, duel = true, zone = true, exalted = true, candid = true, gamba = true, group = true,
+  sound = true, onThisDay = true, pins = "mine",
+  groupOthers = true,   -- new in 1.0, but before it anyone's call already started yours
+}
 
 local function db() return ns.DB() end
 local plain     -- below (a value the client may hide, made safe); declared here, used from here on

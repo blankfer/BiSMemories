@@ -5,8 +5,9 @@
   The window is BiSTheme's shared kit (Libs\BiSTheme\Options.lua), in two columns the way BiS Healing
   builds them (its UI/options.lua): each column built as the kit builds it, then each row pinned into its
   column. 25% bigger, as Healing's - the kit's 8 pt is hard to read. The button is BiSTheme's shared
-  minimap button (Libs\BiSTheme\Minimap.lua): any click opens the journal; the options are a row in it
-  and `/bism options`.
+  minimap button (Libs\BiSTheme\Minimap.lua): left-click the journal, right-click this window (again: closes it).
+  Since 1.0 the game's own options also have a BiS> Memories page (Libs\BiSTheme\Settings.lua): since 8 Nov 2026 the
+  kit's dashboard (CFG.Pages), drawn from this window's very same rows - the window itself is never held inside it.
 ]]
 local ADDON, ns = ...
 local M = ns.M
@@ -21,10 +22,19 @@ local function toggle(key, label, help)
            set = function(db, on) db[key] = on and true or false end }
 end
 
---- The rows. A function, so `get` is asked every time the window paints.
+--- Put the game's options panel away first (a no-op when it is not up): a button on the BiS> page that opens the
+--- journal or takes a picture must not leave the journal behind the panel, or photograph the panel.
+local function away()
+  local T = BiSTheme
+  if T and T.CloseSettingsPanel then pcall(T.CloseSettingsPanel) end
+end
+
+--- The rows: made ONCE, so the options window and the BiS> page hold the very same tables (no second copy of a
+--- setting). `get` is still asked every time either one paints.
 function CFG.Sections()
+  if CFG.sections then return CFG.sections end
   local QUALITY = { [2] = "uncommon", [3] = "rare", [4] = "epic", [5] = "legendary" }
-  return {
+  CFG.sections = {
     { title = "worth a picture", column = 1, options = {
       toggle("levelup", "level ups", "Every level you gain - level 60 is called the top."),
       toggle("boss", "first kills, fastest", "A boss the first time this character kills it, and again when a kill is your fastest yet."),
@@ -37,7 +47,10 @@ function CFG.Sections()
       toggle("candid", "a candid a week", "One picture a week at a random moment - the half of a year nobody photographs."),
       toggle("first", "firsts", "Your first mount, a new mount, learning to ride."),
       toggle("gamba", "gamba wins", "Your biggest win yet at a BiS Gamba table."),
-      toggle("group", "group photos", "When someone in your group calls /bism group."),
+      toggle("group", "group photos", "Your picture in a group photo - the one you call with /bism group, and others' when the next switch lets them."),
+      { key = "groupOthers", kind = "toggle", label = "others can call one",
+        help = "Someone else in your group may start the countdown on your screen and take your picture (/bism group).",
+        get = function(db) return db.groupOthers == true end, set = function(db, on) db.groupOthers = on and true or false end },
     } },
     { title = "the camera", column = 2, options = {
       toggle("clean", "hide the interface", "The interface hidden for the instant of the picture, like Alt+Z, then back."),
@@ -67,13 +80,14 @@ function CFG.Sections()
         get = function(db) return not (type(db.minimap) == "table" and db.minimap.hide) end,
         set = function(_, on) CFG.SetMinimap(on) end },
       { key = "journal", kind = "button", label = "the journal", button = "open", help = "Your memories, the map of where, and the year so far.",
-        action = function() if ns.J then ns.J.Show() end end },
+        action = function() away() if ns.J then ns.J.Show() end end },
       { key = "now", kind = "button", label = "a picture now", button = "take", help = "Take one right now (the same as /bism now).",
-        action = function() M.Shoot("manual", "asked for it") end },
+        action = function() away() M.Shoot("manual", "asked for it") end },
       { key = "groupcall", kind = "button", label = "group photo", button = "call", help = "A countdown for everyone in your group with a BiS addon, then everyone's picture at once (/bism group).",
-        action = function() local ok, why = M.GroupPhoto() if not ok then ns.Print("no group photo - %s", tostring(why)) end end },
+        action = function() away() local ok, why = M.GroupPhoto() if not ok then ns.Print("no group photo - %s", tostring(why)) end end },
     } },
   }
+  return CFG.sections
 end
 
 function CFG.Build()
@@ -152,40 +166,141 @@ function CFG.MinimapDB()
   return db.minimap
 end
 
-local function tip(self)
-  if self.edge then self.edge:set("accent", 1) end
-  if not GameTooltip then return end
-  GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-  GameTooltip:AddLine("BiS> Memories")
-  GameTooltip:AddLine("click  your memories, the map, the year", 0.6, 0.6, 0.6)
-  GameTooltip:AddLine("right-click  options", 0.6, 0.6, 0.6)
-  GameTooltip:AddLine("drag  move me round the edge", 0.6, 0.6, 0.6)
-  GameTooltip:Show()
-end
-
-function CFG.Click(_, which)
-  local b = CFG.button
-  if b and b.Unbury then b:Unbury() end
-  if b and b.CloseMenu then b:CloseMenu() end
-  if b and b.dragging then return end
-  if which == "RightButton" then return CFG.Toggle() end
-  if ns.J then ns.J.Toggle() end
-end
-
+--- THE FAMILY STANDARD (Forever 1.0 - Minimap.lua minor 5, 8 Nov 2026): left-click = the journal, right-click = our
+--- own options window as a toggle (right-click again closes it; never the game's options - Arn, 7 Nov live: "i liked
+--- these old option windows that opened without opening the game option window"), drag = move.
+--- The kit's own click and tooltip, so every BiS button says and does the same.
 function CFG.BuildMinimap()
   if CFG.button then return CFG.button end
   if not (BiSTheme and BiSTheme.Minimap) then return nil end
   CFG.button = BiSTheme.Minimap("BiSMemories", {
-    icon  = "Interface\\Icons\\INV_Misc_Spyglass_03",
-    label = "Memories",
-    db    = CFG.MinimapDB(),
-    menu  = function() return {} end,
+    icon      = "Interface\\Icons\\INV_Misc_Spyglass_03",
+    label     = "Memories",
+    db        = CFG.MinimapDB(),
+    onLeft    = function() if ns.J then ns.J.Toggle() end end,
+    leftLabel = "your memories",
+    onRight   = function() CFG.Toggle() end,
   })
-  if CFG.button and CFG.button.SetScript then
-    CFG.button:SetScript("OnClick", CFG.Click)
-    CFG.button:SetScript("OnEnter", tip)
-  end
   return CFG.button
+end
+
+--------------------------------------------------------------- the BiS> page --
+
+--- What is on, in a few words, for the BiS> front page: "4 of 12 moments - sound off".
+function CFG.Status()
+  local d = ns.DB()
+  local on = 0
+  for _, t in ipairs(M.TRIGGERS) do if d[t.key] ~= false then on = on + 1 end end
+  return ("%d of %d moments - sound %s"):format(on, #M.TRIGGERS, d.sound and "on" or "off")
+end
+
+--- THE BiS> PAGE'S SECTIONS (Settings minor 3, the family rule: every BiS> page is the kit's T.Dashboard). Built
+--- from the options window's own rows - the very same tables (CFG.Sections makes them once) - regrouped by what they
+--- are about. A moment with an on/off of its own (bosses, loot, deaths, group photos, the pins) is a section with a
+--- switch, through the row's own setter, the same saved value `/bism on|off <thing>` and `/bism pins` write.
+--- `switch.key` / `open.key` name the window row they stand for (the suite checks every row is on the page once).
+function CFG.Pages()
+  local by = {}
+  for _, r in ipairs(CFG.Rows()) do by[r.key] = r end
+  local function rows(...)
+    local out = {}
+    for _, k in ipairs({ ... }) do out[#out + 1] = by[k] end
+    return out
+  end
+  local function switch(key)
+    local r = by[key]
+    return { key = key, get = function() return r.get(ns.DB()) and true or false end,
+             set = function(on) r.set(ns.DB(), on) end }
+  end
+  local pins = by.pins
+  local journal = function() if ns.J then ns.J.Tab("memories") ns.J.Show() end end
+  local pages = {
+    { key = "camera", title = "the camera", options = rows("clean", "sound", "gap", "now"),
+      desc = "How every picture is taken: the interface out of the way for the instant of it, a click so you know, "
+        .. "and a pause between two so one loot burst is not forty.",
+      usage = "/bism now [note]   /bism clean   /bism sound   /bism gap <seconds>" },
+    { key = "milestones", title = "milestones", options = rows("levelup", "achievement", "first", "exalted"),
+      desc = "The big steps of a character: every level, every achievement, your first mount and learning to ride, "
+        .. "going exalted.",
+      usage = "/bism on|off levelup   achievement   first   exalted" },
+    { key = "bosses", title = "bosses", switch = switch("boss"), options = rows("bossEvery"),
+      desc = "A boss the first time this character kills it, and again when a kill is your fastest yet.",
+      usage = "/bism on|off boss   /bism every boss" },
+    { key = "loot", title = "loot", switch = switch("loot"), options = rows("lootQuality", "gems"),
+      desc = "Loot of the quality you pick here, and anyone's legendary.",
+      usage = "/bism on|off loot   /bism loot <2-5>   /bism gems" },
+    { key = "deaths", title = "deaths", switch = switch("death"), options = rows("deathEvery"),
+      desc = "The deaths worth keeping: killed by a player or a rival, dying in a boss fight, and your very first.",
+      usage = "/bism on|off death   /bism every death" },
+    { key = "world", title = "out in the world", options = rows("zone", "duel", "candid", "gamba"),
+      desc = "The smaller moments: a place this character has never been, a duel won, one candid picture a week, "
+        .. "your biggest win at a BiS Gamba table.",
+      usage = "/bism on|off zone   duel   candid   gamba" },
+    { key = "group", title = "group photos", switch = switch("group"), options = rows("groupOthers", "groupcall"),
+      desc = "Everyone in your group with a BiS addon, in one picture: a countdown on every screen, then everyone's "
+        .. "picture at once.",
+      usage = "/bism group [seconds]" },
+    { key = "journal", title = "the journal", options = rows("onThisDay", "minimapShown"),
+      open = { key = "journal", label = "the journal", func = journal },
+      desc = "Your memories in the game: what happened, where and who with, on a postcard - the map of where, and "
+        .. "the year so far. On this day reminds you of one, once a day at login.",
+      usage = "/bism journal   /bism year [all]   /bism onthisday" },
+    { key = "pins", title = "world-map pins", options = rows("pins"),
+      -- the switch is the "off" end of the row's own setter; on again comes back to the last choice (mine or all)
+      switch = {
+        get = function() return pins.get(ns.DB()) ~= "off" end,
+        set = function(on)
+          local d = ns.DB()
+          local now = pins.get(d)
+          if now ~= "off" then CFG.lastPins = now end
+          pins.set(d, on and (CFG.lastPins or "mine") or "off")
+        end },
+      open = { label = "the map", func = function() if ns.J then ns.J.Tab("map") ns.J.Show() end end },
+      desc = "A camera viewfinder on the world map where each memory was taken: this character's, or every "
+        .. "character's.",
+      usage = "/bism pins mine|all|off   /bism map" },
+    { key = "album", title = "the album page", options = {},
+      open = { label = "the journal", func = journal },
+      desc = "The pictures live in the game's Screenshots folder; the album page shows them with their notes in your "
+        .. "web browser. The journal's foot holds the page's address: click it, copy it (Ctrl+C), paste it into "
+        .. "Windows key + R.",
+      usage = "/bism path   /bism wow <your WoW folder, if the address is a guess>" },
+  }
+  local db = ns.DB()     -- the table the rows take, the same one the options window hands them
+  for _, e in ipairs(pages) do e.db = db end
+  return pages
+end
+
+--- The model the kit draws: the sections, and a change repaints our own options window when it is open.
+function CFG.Model()
+  return {
+    entries = CFG.Pages(),
+    list = "SECTIONS",
+    idle = "Point at anything on this page to read what it does. Right-click a section in the list to switch it on or off.",
+    onChange = function()
+      local f = CFG.frame
+      if f and f.IsShown and f:IsShown() and f.Paint then f:Paint() end
+    end,
+  }
+end
+
+--- BiS> Memories under the game's Esc > Options > AddOns: the kit's dashboard (Settings minor 3) - every section
+--- down the left, the picked one's settings big on the right. Our options window stays as it always was (the
+--- minimap's right-click); the page never holds it. Nil on a client without that panel.
+function CFG.RegisterPage()
+  local T = BiSTheme
+  if not (T and T.SettingsPage) then return nil end
+  return T.SettingsPage("BiSMemories", {
+    title  = "Memories",
+    about  = "A screenshot when something worth remembering happens, and a note of what it was. A new install "
+      .. "takes the big moments only - level ups, first kills, achievements, firsts. Switch on the rest here.",
+    status = CFG.Status,
+    build  = function(body) CFG.dash = T.Dashboard(body, CFG.Model()) end,
+    refresh = function() if CFG.dash then CFG.dash:Paint() end end,
+    open   = { label = "your memories", func = function() if ns.J then ns.J.Show() end end },
+    api    = rawget(_G, "BiSMemoriesAPI") and { name = "BiSMemoriesAPI",
+      about = "read the album's memories, ask for one of your own, hear when a picture is taken" } or nil,
+  })
 end
 
 function CFG.SetMinimap(on)
@@ -197,4 +312,7 @@ end
 
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_LOGIN")
-ev:SetScript("OnEvent", function() CFG.BuildMinimap() end)
+ev:SetScript("OnEvent", function()
+  CFG.RegisterPage()     -- first, so the button's right-click and tooltip know the page is there
+  CFG.BuildMinimap()
+end)

@@ -55,7 +55,10 @@ end
 local function list(n)
   local log = M.Log()
   if #log == 0 then
-    ns.Print("nothing yet. It fires on: %s", T.text("muted", "levelling, bosses, rare loot, achievements, dying"))
+    -- what is switched on NOW (1.0: a new install has only the big moments on)
+    local on, d = {}, db()
+    for _, t in ipairs(M.TRIGGERS) do if d[t.key] ~= false then on[#on + 1] = t.label end end
+    ns.Print("nothing yet. It fires on: %s", T.text("muted", #on > 0 and table.concat(on, ", ") or "nothing - every kind is off"))
     return
   end
   ns.Print("%d memory(s):", #log)

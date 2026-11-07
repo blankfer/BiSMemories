@@ -107,10 +107,13 @@ local function newFontString(owner, template)
             if p.point == point then return p.x, p.y end
         end
     end
-    function f:ClearAllPoints() self._points = {} end
+    function f:ClearAllPoints() self._points = {} self._all = nil end
+    function f:SetAllPoints() self._all = true end
     function f:SetWidth(w) self._w = w end
     function f:SetHeight(h) self._h = h end
-    function f:SetJustifyH() end
+    -- kept (8 Nov 2026): "the words read left to right" was untestable while these answered silence
+    function f:SetJustifyH(j) self._justH = j end
+    function f:SetJustifyV(j) self._justV = j end
     function f:SetAlpha(a) self._alpha = a end
     function f:GetAlpha() return self._alpha end
     function f:GetParent() return self._parent end
@@ -160,17 +163,29 @@ local function newFrame(ftype, name, parent)
     local fr = {
         _type = ftype, _name = name, _parent = parent,
         _scripts = {}, _events = {}, _shown = true,
-        _w = 200, _h = 24, _text = "", _enabled = true,
+        _text = "", _enabled = true,
     }
+    -- AN UNSIZED FRAME IS 0 x 0 (8 Nov 2026, the BiS> dashboard). The client answers GetWidth/GetHeight 0 for a
+    -- frame nobody sized (or sized only by anchors it has not laid out yet); this mock used to answer 200 x 24,
+    -- so "the rows fit the panel" could pass on a panel that has no height at all.
     H.frames[#H.frames + 1] = fr
 
     function fr:GetName() return self._name end
     function fr:GetParent() return self._parent end
+    -- A FRAME KEEPS ITS PARENT AND ITS SCALE, SCALE STARTING AT 1 (8 Nov 2026, the BiS> page: the catch-all
+    -- answered SetParent/SetScale with silence and GetScale with nil, so "the page leaves the options window
+    -- alone" was untestable - a page that re-parented and shrank it would have passed).
+    function fr:SetParent(p) self._parent = p end
+    function fr:SetScale(s)
+        if not isnum(s) or s <= 0 then error("SetScale needs a number above 0", 0) end
+        self._scale = s
+    end
+    function fr:GetScale() return self._scale or 1 end
     function fr:SetSize(w, h) self._w, self._h = w, h end
     function fr:SetWidth(w) self._w = w end
     function fr:SetHeight(h) self._h = h end
-    function fr:GetWidth() return self._w end
-    function fr:GetHeight() return self._h end
+    function fr:GetWidth() return self._w or 0 end
+    function fr:GetHeight() return self._h or 0 end
     -- A FRAME KEEPS ITS ALPHA, STARTING AT 1 (21 Oct 2026, clean shots: the catch-all answered SetAlpha on a
     -- frame with silence and GetAlpha with nothing, so "is the interface out of the picture" was untestable).
     function fr:SetAlpha(a) self._alpha = a end
@@ -214,8 +229,17 @@ local function newFrame(ftype, name, parent)
             if p.point == point then return p.x, p.y end
         end
     end
-    function fr:ClearAllPoints() self._points = {} end
-    function fr:SetAllPoints() end
+    -- SetAllPoints REMEMBERED, and undone by ClearAllPoints, as on a texture (8 Nov 2026: a lamp pinned to its row
+    -- with SetAllPoints AND SetPoint is stretched over the whole row in the client - the cyan rows)
+    function fr:ClearAllPoints() self._points = {} self._all = nil end
+    function fr:SetAllPoints() self._all = true end
+    -- which clicks a button hears: the client sends a right-click only to a button registered for it
+    function fr:RegisterForClicks(...) self._clicks = { ... } end
+    function fr:SetFrameLevel(n)
+        if not isnum(n) then error("SetFrameLevel needs a number", 0) end
+        self._level = n
+    end
+    function fr:GetFrameLevel() return self._level or 0 end
     function fr:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
     function fr:GetNumPoints() return 1 end
     function fr:Show() self._shown = true end

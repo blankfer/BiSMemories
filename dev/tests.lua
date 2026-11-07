@@ -100,6 +100,11 @@ do
 end
 fire("ADDON_LOADED", "BiSMemories")
 H.ok(type(_G.BiSMemoriesDB) == "table" and _G.BiSMemoriesDB.comm == true, "SavedVariables shaped with defaults on first load")
+-- A NEW INSTALL STARTS QUIET since 1.0 (the "7 Nov: Forever 1.0" sections at the end prove it). The feature tests
+-- below are about what each switch DOES, so the suite's player switches everything on first - every extra at the
+-- value an existing player keeps (NS.WAS).
+H.ok(NS.firstRun == "new" and _G.BiSMemoriesDB.sound == false, "the suite's first login is a new install, quiet")
+for k, v in pairs(NS.WAS) do _G.BiSMemoriesDB[k] = v end
 
 H.section("embedded libs are canon (drift fences)")
 H.eq(_G.LibBiSComm.MINOR, 18, "LibBiSComm minor 18")
@@ -1951,10 +1956,19 @@ end)()
   local pin = NS.Pins.pins[e]
   H.ok(pin ~= nil, "the world map has a pin to hover")
   if pin then
+    -- A VIEWFINDER, NOT A SQUARE (Arn, 7 Nov live: "maybe we dont make them into a square but a crosshair or
+    -- something that has the middle blank ... so the middle is always see through"): four corner brackets, nothing
+    -- drawn in the middle
+    local P = NS.Pins
+    H.ok(pin.fill == nil and pin.arms and #pin.arms == 8 and pin.shade and #pin.shade == 8,
+         "a pin is four corner brackets (and their dark outline), no filled square")
+    H.ok(2 * P.ARM + 2 <= P.SIZE, "each bracket stops short of the middle: the middle is see-through", P.ARM .. "/" .. P.SIZE)
+    local kind = pin.arms[1]._color
+    H.ok(kind and not near(kind, "accent"), "the brackets wear the memory's colour")
     pin:Fire("OnEnter")
-    H.ok(near(pin.edge._color, "accent"), "a world-map pin's edge lights under the mouse")
+    H.ok(near(pin.arms[1]._color, "accent") and near(pin.arms[8]._color, "accent"), "a world-map pin lights under the mouse")
     pin:Fire("OnLeave")
-    H.ok(pin.edge._color and pin.edge._color[1] == 0, "and goes back to black")
+    H.ok(pin.arms[1]._color[1] == kind[1] and pin.arms[1]._color[2] == kind[2], "and goes back to its colour")
   end
 
   H.section("6 Nov: Escape closes every window, and small text is bigger")
@@ -1997,6 +2011,344 @@ end)()
   NS.BUILD = keep
   J.Hide()
   wipe()
+end)()
+
+-- ===================================================================== 7 Nov: Forever 1.0
+-- Arn, 7 Nov 2026: "the core functionality when you install this add-on is you expected to take some screenshots,
+-- but we can get into the nitty gritty in that big option menu". A NEW install takes the big moments' pictures and
+-- nothing else; a player who already has the addon keeps every switch exactly as it was.
+;(function()
+  local M, CFG, J, T = NS.M, NS.CFG, NS.J, _G.BiSTheme
+  local CORE = { "levelup", "boss", "achievement", "first" }
+  local QUIET = { "loot", "death", "duel", "zone", "exalted", "candid", "gamba", "group" }
+  local keepDB, keepChar = _G.BiSMemoriesDB, _G.BiSMemoriesCharDB
+  -- a login: the client hands back these two (nil = nothing came back), then ADDON_LOADED
+  local function login(acct, char)
+    _G.BiSMemoriesDB, _G.BiSMemoriesCharDB = acct, char
+    fire("ADDON_LOADED", "BiSMemories")
+    return _G.BiSMemoriesDB
+  end
+  local function scalars(t)
+    local out = {}
+    for k, v in pairs(t) do if type(v) ~= "table" then out[k] = v end end
+    return out
+  end
+  local function same(a, b)
+    for k, v in pairs(a) do if b[k] ~= v then return false, k end end
+    for k, v in pairs(b) do if a[k] ~= v then return false, k end end
+    return true
+  end
+
+  H.section("7 Nov: Forever 1.0 - a new install starts quiet, the big moments on")
+  local d = login(nil, nil)
+  for _, k in ipairs(CORE) do H.eq(d[k], true, "new install: " .. k .. " on - the addon's main job") end
+  H.eq(d.clean, true, "new install: the interface still steps out of the picture")
+  for _, k in ipairs(QUIET) do H.eq(d[k], false, "new install: " .. k .. " off until switched on") end
+  H.eq(d.sound, false, "new install: no camera click")
+  H.eq(d.onThisDay, false, "new install: no on-this-day line or card at login")
+  H.eq(d.pins, "off", "new install: nothing on the world map")
+  H.eq(d.groupOthers, false, "new install: nobody else can start your countdown")
+  H.eq(d.forever10, true, "and the stamp, so this never runs again")
+  -- quiet in practice, not just in the table
+  H.eq(select(2, M.Shoot("loot", "[Thunderfury]")), "off", "a loot line takes no picture")
+  H.eq(M.OnThisDay(), nil, "the login says nothing")
+  M.counting = nil
+  local h = _G.LibBiSComm.handlers and _G.LibBiSComm.handlers.MEM and _G.LibBiSComm.handlers.MEM.SNAP
+  H.ok(type(h) == "function", "the group call is still listened for")
+  if h then h("Stranger", "2") end
+  H.ok(not M.counting, "someone else's /bism group starts nothing on a new install's screen")
+  local realGroup, wire = _G.IsInGroup, #H.wire
+  _G.IsInGroup = function() return true end
+  local ok, why = M.GroupPhoto(3)
+  _G.IsInGroup = realGroup
+  H.ok(not ok and tostring(why):find("off", 1, true) and #H.wire == wire and not M.counting,
+       "your own call with group photos off: says so, sends nothing", tostring(why))
+
+  H.section("7 Nov: Forever 1.0 - an existing save keeps every feature as it was")
+  -- a 0.10.1 save the way that version wrote it, minus keys an older one never stored (nil there meant ON),
+  -- and one switch the player chose
+  d = login({ comm = true, levelup = true, boss = true, loot = false, death = true,
+              log = { { at = 5, reason = "zone", detail = "Durotar" } } }, nil)
+  H.eq(d.loot, false, "the player's own 'off' stays off")
+  for _, k in ipairs(QUIET) do
+    if k ~= "loot" then H.eq(d[k], true, "existing: " .. k .. " still on, written down now") end
+  end
+  H.eq(d.sound, true, "existing: the click still clicks")
+  H.eq(d.onThisDay, true, "existing: on this day still comes")
+  H.eq(d.pins, "mine", "existing: your pins still on the map")
+  H.eq(d.groupOthers, true, "existing: the group's call still starts your countdown")
+  H.eq(d.forever10, true, "stamped")
+  M.counting = nil
+  if h then h("Stranger", "2") end
+  H.ok(M.counting, "and someone else's call counts down here, as it did")
+  for _ = 1, 3 do runTimers() end
+  M.counting = nil
+  -- a player who had the extras off keeps them off
+  d = login({ comm = true, sound = false, onThisDay = false, pins = "all", log = { { at = 6, reason = "boss" } } }, nil)
+  H.ok(d.sound == false and d.onThisDay == false and d.pins == "all", "an existing 'off' or 'all' is never touched")
+  -- THE FOREVER LOSS: the account-wide file came back empty, the per-character copy did not. A player, not new.
+  d = login(nil, NS.Serialize({ comm = true, log = { { at = 7, reason = "boss", detail = "Hogger" } } }))
+  H.ok(d.zone == true and d.sound == true and d.pins == "mine" and d.groupOthers == true,
+       "only the per-character copy came back: still an existing player, nothing turned off")
+  d = login(nil, NS.Serialize({ zones = { Mulgore = true } }))
+  H.ok(d.zone == true and d.groupOthers == true, "a copy with places and no pictures yet: an existing player too")
+
+  H.section("7 Nov: Forever 1.0 - a second login changes nothing")
+  d = login({ comm = true, log = { { at = 8, reason = "boss" } } }, nil)
+  local once = scalars(d)
+  d = login(d, nil)
+  local okSame, diff = same(once, scalars(d))
+  H.ok(okSame, "an existing save: the second 1.0 login writes nothing new", diff)
+  -- a new install, then the player switches things: the next login keeps their choice
+  d = login(nil, nil)
+  d.loot, d.sound, d.levelup = true, true, false
+  once = scalars(d)
+  d = login(d, NS.Serialize(d))
+  okSame, diff = same(once, scalars(d))
+  H.ok(okSame, "a new install's own choices survive the next login", diff)
+  -- a stamped save where a switch went missing is NOT frozen back on (the stamp means: done)
+  d = login({ comm = true, forever10 = true, log = { { at = 9, reason = "boss" } } }, nil)
+  H.ok(d.zone == false and d.sound == false and d.groupOthers == false, "after the stamp, a missing switch takes today's default")
+
+  H.section("7 Nov: one options home - BiS> Memories in the game's own options")
+  d = login(nil, nil)
+  local keepS, keepRoot, keepPage = rawget(_G, "Settings"), T.settingsRoot, T.settingsPages.BiSMemories
+  local reg, opened, nextId = {}, {}, 0
+  local function Category(name)
+    nextId = nextId + 1
+    local c = { name = name, id = nextId }
+    function c:GetID() return self.id end
+    reg[c.id] = c
+    return c
+  end
+  _G.Settings = {
+    RegisterCanvasLayoutCategory = function(frame, name) local c = Category(name) c.frame = frame return c, {} end,
+    RegisterAddOnCategory = function(c) c.addon = true end,
+    RegisterCanvasLayoutSubcategory = function(parent, frame, name)
+      if not (parent and parent.addon) then error("parent category is not registered") end
+      local c = Category(name) c.frame, c.parentCat = frame, parent
+      return c, {}
+    end,
+    OpenToCategory = function(id) if not reg[id] then return false end opened[#opened + 1] = reg[id].name return true end,
+  }
+  T.settingsRoot, T.settingsPages.BiSMemories = nil, nil
+  fire("PLAYER_LOGIN")
+  local page = T.settingsPages.BiSMemories
+  H.ok(page and page.category and page.spec and page.spec.title == "Memories", "registered at login: BiS> Memories")
+  local spec = page and page.spec or {}
+  H.eq(spec.api and spec.api.name, "BiSMemoriesAPI", "its API named for other addon authors")
+  H.ok(type(spec.about) == "string" and #spec.about > 20, "a line saying what it is for")
+  local okSt, st = pcall(spec.status or error)
+  H.eq(okSt and st, "4 of 12 moments - sound off", "the front page: what is on, in a few words")
+  -- 8 Nov (Settings minor 3, the family rule - Arn of BiS> Tools: "it looks way way better do it for the other
+  -- ones"): the page is the kit's DASHBOARD. Every section down the left, the picked one's settings big on the
+  -- right, the help strip along the bottom - and the options window is left exactly as it is.
+  H.ok(type(spec.build) == "function" and type(spec.refresh) == "function", "the page draws a dashboard: build and refresh")
+  H.eq(spec.window, nil, "no stand-in button to the options window: the page holds every setting itself")
+  -- the window an earlier section built holds an earlier login's save; in the game both are built after the one
+  -- ADDON_LOADED, on the same table - so build it again on this login's
+  CFG.built, CFG.frame = nil, nil
+  local ow = CFG.Build()
+  ow:Hide()
+  local owParent, owScale = ow:GetParent(), ow:GetScale()
+  if page and page.frame then page.frame:Fire("OnShow") end
+  local dash = page and page.frame and page.frame.body and page.frame.body.dash
+  H.ok(dash ~= nil, "showing the page builds the dashboard")
+  dash = dash or { rows = {}, pages = {}, entries = {} }
+  H.ok(ow:GetParent() == owParent and ow:GetScale() == owScale, "showing the page: the window keeps its parent and its scale")
+  H.ok(not ow:IsShown(), "showing the page: the window stays hidden")
+  H.ok(not (page.frame.optBtn and page.frame.optBtn:IsShown()), "and no stand-in button on the page")
+  local WANT = { "camera", "milestones", "bosses", "loot", "deaths", "world", "group", "journal", "pins", "album" }
+  H.eq(#dash.rows, #WANT, "a row per section down the left")
+  for i, k in ipairs(WANT) do H.eq(dash.rows[i] and dash.rows[i].entry.key, k, "section " .. i .. ": " .. k) end
+  H.eq(dash.list and dash.list.head:GetText(), "SECTIONS", "the list's title")
+  H.eq(dash.count and dash.count:GetText(), "1 of 5 on", "a new install: bosses on; loot, deaths, group photos, pins off")
+  H.eq(dash.selected, "camera", "the camera is picked first")
+  -- every row of the options window is on the dashboard exactly once: a row, a section's switch, or its button
+  local seen = {}
+  local function saw(k) if k then seen[k] = (seen[k] or 0) + 1 end end
+  for _, e in ipairs(dash.entries) do
+    for _, o in ipairs(e.options or {}) do saw(o.key) end
+    saw(e.switch and e.switch.key)
+    saw(e.open and e.open.key)
+    H.ok(type(e.desc) == "string" and #e.desc > 20, "words for a player: " .. tostring(e.key))
+  end
+  for _, r in ipairs(CFG.Rows()) do H.eq(seen[r.key], 1, "on the dashboard once: " .. tostring(r.key)) end
+  -- the SAME tables: no second copy of a setting
+  local winOpt, winRow = {}, {}
+  for _, r in ipairs(ow.rows or {}) do if r.opt then winOpt[r.opt.key], winRow[r.opt.key] = r.opt, r end end
+  local sameT, n = true, 0
+  for _, e in ipairs(dash.entries) do
+    for _, o in ipairs(e.options or {}) do n = n + 1 if winOpt[o.key] ~= o then sameT = false end end
+  end
+  H.ok(n > 0 and sameT, "every dashboard row is the options window's own option table", n)
+
+  local function rowOf(key) for _, r in ipairs(dash.rows) do if r.entry.key == key then return r end end end
+  local function pick(key)
+    local r = rowOf(key)
+    if r then r:Fire("OnClick", "LeftButton") end
+    return dash.pages[key] or {}
+  end
+  local function find(rows, key) for _, r in ipairs(rows) do if r.opt.key == key then return r end end end
+  local loot = pick("loot")
+  H.eq(dash.selected, "loot", "a click on a section picks it")
+  H.ok(#loot == 2 and loot[1]:IsShown() and loot[1].opt.key == "lootQuality" and loot[2].opt.key == "gems",
+       "its own rows on the right: the quality, the gems")
+  H.eq(dash.detail.name:GetText(), "loot", "under its name")
+  H.ok(dash.detail.usage:IsShown() and dash.detail.usage:GetText():find("/bism loot", 1, true), "its command at the foot",
+       dash.detail.usage:GetText())
+  local cam = pick("camera")
+  H.ok(not loot[1]:IsShown(), "picking another: the last one's rows go")
+  -- a setting flipped on the dashboard: the saved value, and the options window's row agrees after its paint
+  local snd = find(cam, "sound")
+  local before = d.sound
+  if snd then snd.sw:Fire("OnClick", "LeftButton") end
+  H.eq(d.sound, not before, "the camera click flipped on the dashboard: the saved value")
+  ow:Paint()
+  H.eq(winRow.sound and winRow.sound.ctl.on, d.sound, "the options window's row agrees after its paint")
+  H.eq(snd and snd.sw.on, d.sound, "and the dashboard's switch says it")
+  local gap = find(cam, "gap")
+  local g0 = d.gap or 8
+  if gap then gap.plus:Fire("OnClick", "LeftButton") end
+  H.eq(d.gap, g0 + 2, "the stepper: seconds between, up by two")
+  ow:Show()
+  if gap then gap.minus:Fire("OnClick", "LeftButton") end
+  H.eq(winRow.gap and winRow.gap.ctl.val:GetText(), tostring(g0), "the options window, open, is repainted at once")
+  ow:Hide()
+
+  -- a section's own switch goes through the same setter as /bism on|off
+  NS.Slash("on boss")
+  spec.refresh(page.frame.body)
+  pick("bosses")
+  H.ok(dash.detail.switch:IsShown() and dash.detail.switch.on == true and rowOf("bosses").state:GetText() == "ON",
+       "bosses: the big switch and the list say ON")
+  dash.detail.switch:Fire("OnClick", "LeftButton")
+  H.eq(d.boss, false, "the big switch off: the same saved value /bism off boss writes")
+  H.ok(rowOf("bosses").state:GetText() == "off" and dash.pages.bosses[1].label:GetAlpha() < 1,
+       "the list follows, and its settings grey")
+  NS.Slash("on boss")
+  spec.refresh(page.frame.body)
+  H.ok(dash.detail.switch.on == true and rowOf("bosses").state:GetText() == "ON", "/bism on boss: the page says so at its next paint")
+  rowOf("loot"):Fire("OnClick", "RightButton")
+  H.eq(d.loot, true, "a right-click in the list switches loot on")
+  NS.Slash("off loot")
+  spec.refresh(page.frame.body)
+  H.eq(rowOf("loot").state:GetText(), "off", "/bism off loot: the list says off")
+  -- the pins: switched off keeps "off", switched on comes back to the last choice
+  NS.Slash("pins all")
+  spec.refresh(page.frame.body)
+  pick("pins")
+  H.ok(dash.detail.switch.on == true, "pins all: the pins switch is on")
+  dash.detail.switch:Fire("OnClick", "LeftButton")
+  H.eq(d.pins, "off", "the pins switched off")
+  dash.detail.switch:Fire("OnClick", "LeftButton")
+  H.eq(d.pins, "all", "and on again: back to every character's")
+
+  -- the buttons put the game's options away first, so the journal and the picture are not behind them
+  local up = true
+  local keepPanel, keepHide = rawget(_G, "SettingsPanel"), rawget(_G, "HideUIPanel")
+  _G.SettingsPanel = { IsShown = function() return up end, Hide = function() up = false end }
+  _G.HideUIPanel = function(x) x:Hide() end
+  pick("journal")
+  J.Hide()
+  H.eq(dash.detail.open.label:GetText(), "the journal", "the journal's section: a button to it")
+  dash.detail.open:Fire("OnClick", "LeftButton")
+  H.ok(not up and J.frame:IsShown(), "which puts the game's options away and opens the journal")
+  J.Hide()
+  up = true
+  pick("pins")
+  dash.detail.open:Fire("OnClick", "LeftButton")
+  H.ok(not up and J.frame:IsShown() and J.page == "map", "the pins' button: the journal's map")
+  J.Hide()
+  J.Tab("memories")
+  up = true
+  local shotWithPanel = "not shot"
+  local realShoot = M.Shoot
+  M.Shoot = function() shotWithPanel = up return nil, "test" end
+  local now = find(pick("camera"), "now")
+  if now then now.btn:Fire("OnClick", "LeftButton") end
+  M.Shoot = realShoot
+  H.eq(shotWithPanel, false, "a picture now from the page: the game's options go first, the picture is of the game")
+  _G.SettingsPanel, _G.HideUIPanel = keepPanel, keepHide
+  pick("album")
+  H.ok(dash.detail.none:IsShown() and dash.detail.usage:GetText():find("/bism path", 1, true)
+       and dash.detail.open:IsShown(), "the album page: words, its commands, the journal (the address to copy is there)")
+
+  H.eq(spec.open and spec.open.label, "your memories", "its big button: your memories")
+  J.Hide()
+  if spec.open then spec.open.func() end
+  H.ok(J.frame:IsShown(), "which opens the journal")
+  J.Hide()
+  -- every switch a new install starts off has a row a player can find
+  local rows = {}
+  for _, r in ipairs(CFG.Rows()) do rows[r.key] = r end
+  for _, k in ipairs(QUIET) do H.ok(rows[k] and rows[k].kind == "toggle", "a row for " .. k) end
+  for _, k in ipairs({ "sound", "onThisDay", "pins", "groupOthers" }) do H.ok(rows[k] ~= nil, "a row for " .. k) end
+  local r = rows.groupOthers
+  H.ok(r and r.get(d) == false, "the group row reads off on a new install")
+  if r then r.set(d, true) end
+  H.eq(d.groupOthers, true, "and switches it on")
+  if r then r.set(d, false) end
+
+  H.section("7 Nov: the minimap - left your memories, right the options")
+  local b = CFG.button
+  J.Hide()
+  b:Fire("OnClick", "LeftButton")
+  H.ok(J.frame:IsShown(), "left-click: your memories")
+  J.Hide()
+  -- 8 Nov (Minimap minor 5): right-click = our own options window, a toggle; never the game's options
+  local ow2 = CFG.Build()
+  ow2:Hide()
+  local openedBefore = #opened
+  b:Fire("OnClick", "RightButton")
+  H.ok(ow2:IsShown(), "right-click: our own options window")
+  H.ok(not J.frame:IsShown(), "and not the journal")
+  b:Fire("OnClick", "RightButton")
+  H.ok(not ow2:IsShown(), "a second right-click closes it")
+  H.eq(#opened, openedBefore, "the right-click never opens the game's options")
+  local tip, realAdd = {}, GameTooltip.AddLine
+  GameTooltip.AddLine = function(_, t) tip[#tip + 1] = strip(t) end
+  b:Fire("OnEnter")
+  GameTooltip.AddLine = realAdd
+  local said3 = table.concat(tip, " | ")
+  H.ok(said3:find("left-click  your memories", 1, true) and said3:find("right-click  options", 1, true)
+       and said3:find("drag  move", 1, true), "the tooltip says exactly that", said3)
+  -- no game options panel (an older client): the right-click falls back to our own window
+  _G.Settings = nil
+  local w = CFG.Build()
+  w:Hide()
+  b:Fire("OnClick", "RightButton")
+  H.ok(w:IsShown(), "no options panel: the right-click opens our own window")
+  w:Hide()
+  _G.Settings, T.settingsRoot = keepS, keepRoot
+  T.settingsPages.BiSMemories = keepPage or T.settingsPages.BiSMemories
+
+  H.section("7 Nov sweep: a name's menu, never opened by us inside an instance")
+  local menu
+  local realInst, realSecret = _G.IsInInstance, _G.issecretvalue
+  _G.UnitPopup_OpenMenu = function(kind, ctx) menu = kind .. ":" .. tostring(ctx.name) end
+  _G.FriendsFrame_ShowDropdown = function(name) menu = "dropdown:" .. tostring(name) end
+  _G.IsInInstance = function() return false, "none" end
+  H.ok(J.PlayerMenu("Kumlance Wildhammer") and menu == "FRIEND:Kumlance Wildhammer", "out in the world: the game's menu")
+  menu = nil
+  said = {}
+  _G.IsInInstance = function() return true, "party" end
+  H.ok(not J.PlayerMenu("Kumlance Wildhammer") and menu == nil, "in a dungeon: no menu (ours would break the game's own)")
+  H.ok(#said == 1 and said[1]:find("Kumlance", 1, true), "and one line saying why", said[1])
+  local secret = setmetatable({}, { __eq = function() error("secret value: refused", 0) end,
+                                    __tostring = function() error("secret value: refused", 0) end })
+  _G.issecretvalue = function(v) return v == nil and false or rawequal(v, secret) end
+  _G.IsInInstance = function() return secret, "party" end
+  said = {}
+  local okP, got = pcall(J.PlayerMenu, "Kumlance Wildhammer")
+  H.ok(okP and not got and menu == nil, "a hidden answer is not a 'no': no menu", tostring(got))
+  _G.IsInInstance = function() error("no such call", 0) end
+  okP, got = pcall(J.PlayerMenu, "Kumlance Wildhammer")
+  H.ok(okP and not got and menu == nil, "a refusing client: no menu, no error")
+  _G.IsInInstance, _G.issecretvalue = realInst, realSecret
+  _G.UnitPopup_OpenMenu, _G.FriendsFrame_ShowDropdown = nil, nil
+
+  _G.BiSMemoriesDB, _G.BiSMemoriesCharDB = keepDB, keepChar
 end)()
 
 H.report()

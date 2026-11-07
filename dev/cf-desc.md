@@ -1,9 +1,10 @@
-# BiS Memories — CurseForge page text (0.9.0)
+# BiS Memories — CurseForge page text (1.0.0)
 
 Paste everything below the line into the project description
 (CurseForge → BiS>Memories, project 1701857 → Edit → Description), in the Markdown editor.
 
 Written 21 Oct 2026 for 0.9.0. The page it replaces described 0.3.0 and the old two-button album.
+7 Nov 2026, 1.0.0: the quiet start and where the options live (one line under "What sets it off").
 In the house voice (`_bisdev/docs/voice.md`): the opener talks; lists and tables stay flat.
 
 ---
@@ -24,7 +25,7 @@ You killed Ragnaros for the first time. Somewhere in a folder of eleven hundred 
 - Your biggest win at a BiS Gamba table
 - One candid shot a week, at a random moment
 
-Every one is a switch in the options. The interface hides for the instant of the shot, so the picture is the game, not your bars.
+Every one is a switch in the options. A new install starts with the big moments only - level ups, first kills, achievements, firsts - and no sound; switch the rest on in **Esc > Options > AddOns > BiS> Memories**, or right-click the minimap button. The interface hides for the instant of the shot, so the picture is the game, not your bars.
 
 ## Your album
 
@@ -40,7 +41,7 @@ Search for a zone, a boss, an item or a friend's name, or click a count to see o
 
 `/bism journal` opens your memories night by night. Click one and you're on a postcard: you in 3D, in what you wore that moment, beside the boss you killed or whoever killed you.
 
-- **Who was there.** Every picture keeps your group. Click a name to whisper them, invite them again, or add them as a friend or a BiS Tools pal.
+- **Who was there.** Every picture keeps your group. Click a name to whisper them, invite them again, or add them as a friend or a BiS Tools pal (outside instances).
 - **The map.** Every picture as a dot where it was taken, and pins on the game's world map.
 - **On this day.** Once a day: what happened a year ago today.
 - **The year.** Levels, first kills, new places. `/bism year`.

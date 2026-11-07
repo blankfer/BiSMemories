@@ -17,7 +17,12 @@ local M, T = ns.M, ns.T
 local P = {}
 ns.Pins = P
 
-P.SIZE = 10
+-- A VIEWFINDER, NOT A SQUARE (Arn, 7 Nov live: "maybe we dont make them into a square but a crosshair or something
+-- that has the middle blank like a circular shutter with line not connected so the middle is always see through"):
+-- a camera's four corner brackets in the memory's colour, each with a one-pixel dark outline so it reads on any
+-- map, and nothing drawn in the middle - a quest "!" or a road under it stays in plain sight.
+P.SIZE, P.ARM, P.THICK = 14, 5, 2
+P.CORNERS = { { "TOPLEFT", 1, -1 }, { "TOPRIGHT", -1, -1 }, { "BOTTOMLEFT", 1, 1 }, { "BOTTOMRIGHT", -1, 1 } }
 P.pins = {}            -- memory -> its frame
 P.pool = {}
 
@@ -52,21 +57,33 @@ local function NewPin()
   if b then return b end
   b = CreateFrame("Button", nil, UIParent)
   b:SetSize(P.SIZE, P.SIZE)
-  b.edge = b:CreateTexture(nil, "BORDER")
-  b.edge:SetPoint("TOPLEFT", -1, 1)
-  b.edge:SetPoint("BOTTOMRIGHT", 1, -1)
-  b.edge:SetColorTexture(0, 0, 0, 1)
-  b.fill = b:CreateTexture(nil, "OVERLAY")
-  b.fill:SetAllPoints()
-  -- under the mouse the edge goes to the accent (Arn, 6 Nov: everything clickable lights up); the world map
+  b.arms, b.shade = {}, {}
+  for _, c in ipairs(P.CORNERS) do
+    local corner, dx, dy = c[1], c[2], c[3]
+    for _, horiz in ipairs({ true, false }) do
+      local w, h = horiz and P.ARM or P.THICK, horiz and P.THICK or P.ARM
+      local s = b:CreateTexture(nil, "BORDER")                      -- the dark outline, one pixel round the arm
+      s:SetPoint(corner, b, corner, -dx, -dy)
+      s:SetSize(w + 2, h + 2)
+      s:SetColorTexture(0, 0, 0, 0.85)
+      b.shade[#b.shade + 1] = s
+      local a = b:CreateTexture(nil, "OVERLAY")
+      a:SetPoint(corner, b, corner, 0, 0)
+      a:SetSize(w, h)
+      b.arms[#b.arms + 1] = a
+    end
+  end
+  function b:Paint(r, g, bl)
+    for _, a in ipairs(self.arms) do a:SetColorTexture(r, g, bl, 1) end
+  end
+  -- under the mouse the brackets go to the accent (Arn, 6 Nov: everything clickable lights up); the world map
   -- is not washed
   b:SetScript("OnEnter", function(self)
-    local r, g, bl = T.rgb("accent")
-    self.edge:SetColorTexture(r, g, bl, 1)
+    self:Paint(T.rgb("accent"))
     if ns.J and self.entry then ns.J.Tip(self, self.entry, true) end
   end)
   b:SetScript("OnLeave", function(self)
-    self.edge:SetColorTexture(0, 0, 0, 1)
+    if self.kind then self:Paint(unpack(self.kind)) end
     if GameTooltip then GameTooltip:Hide() end
   end)
   b:SetScript("OnClick", function(self) if ns.J and self.entry then ns.J.Select(self.entry) ns.J.Show() end end)
@@ -95,7 +112,8 @@ function P.Update()
     if type(e) == "table" and e.map and e.x and e.y and (all or e.char == nil or e.char == me) then
       local b = NewPin()
       local r, g, bl = T.rgb(colours[e.reason] or "ink")
-      b.fill:SetColorTexture(r, g, bl, 1)
+      b.kind = { r, g, bl }
+      b:Paint(r, g, bl)
       b.entry = e
       local ok, placed = pcall(H.AddWorldMapIconMap, H, P, b, e.map, e.x, e.y, _G.HBD_PINS_WORLDMAP_SHOW_PARENT, P.Layer())
       if ok and placed ~= false then
