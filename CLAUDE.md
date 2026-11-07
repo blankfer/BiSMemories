@@ -23,12 +23,17 @@ Read ../_bisdev/CLAUDE.md first.
   poses `J.POSE`), map and year pages, the on-this-day card (`J.Toast`), the countdown (`J.Count`).
 - `UI/Options.lua` (`ns.CFG`): BiSTheme's options window in two columns, the minimap button (kit standard, Minimap
   minor 5: left = journal, right = `CFG.Toggle`, our own options window - right-click again closes it, never the
-  game's options) and the BiS> Memories page in the game's options (`CFG.RegisterPage`, at PLAYER_LOGIN; Settings
-  minor 2: status line + a button "the options window" that shows ours as it is - the page never holds it inside).
+  game's options) and the BiS> Memories page in the game's options (`CFG.RegisterPage`, at PLAYER_LOGIN). Since 8 Nov
+  2026 the page is the kit's dashboard (`T.Dashboard`, Settings minor 3, the family rule): `CFG.Pages()` regroups the
+  window's own rows (`CFG.Sections()` makes the tables ONCE, so both hold the same ones) into ten sections - the
+  camera, milestones, bosses*, loot*, deaths*, out in the world, group photos*, the journal, world-map pins*, the
+  album page (* = a switch of its own, through the row's setter = what `/bism on|off` / `/bism pins` write).
+  `CFG.Model()` repaints our window when it is open. The window is never held inside the page; its buttons (journal,
+  a picture now, group call) put the game's options away first.
 - Forever 1.0 (7 Nov 2026): `ns.DEFAULTS` = what a NEW install gets (big moments on, extras off); `ns.WAS`
   (Memories.lua) = 0.10.1's values, written once into an EXISTING save by `ns.Forever10` (Init.lua, before `db()`;
   stamp `forever10`). A per-character mirror alone counts as existing.
-- `Libs/`: embedded `BiSTheme/Console.lua`, `Options.lua`, `Minimap.lua` and `LibBiSComm-1.0` — copies, see
+- `Libs/`: embedded `BiSTheme/Console.lua`, `Options.lua`, `Minimap.lua`, `Settings.lua` and `LibBiSComm-1.0` — copies, see
   `../_bisdev/CLAUDE.md`. Since 0.9.0 also `LibStub`, `CallbackHandler-1.0`, `HereBeDragons` (BSD), BiS
   Tools' copies byte for byte - `Libs/THIRD-PARTY.txt`. The suites compile HereBeDragons, never run it.
 - `dev/tests.lua`: headless suite on `dev/kit.lua` (Nebbinator's strict harness, verbatim). Loads the TOC's

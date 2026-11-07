@@ -2140,22 +2140,140 @@ end)()
   H.ok(type(spec.about) == "string" and #spec.about > 20, "a line saying what it is for")
   local okSt, st = pcall(spec.status or error)
   H.eq(okSt and st, "4 of 12 moments - sound off", "the front page: what is on, in a few words")
-  local okW, win = pcall(spec.window or error)
-  H.ok(okW and win == CFG.Build(), "the page knows the options window")
-  -- 8 Nov (Settings minor 2): showing the page leaves our window exactly as it is - same parent, same scale,
-  -- still hidden - and a button on the page opens it the way it always opened
+  -- 8 Nov (Settings minor 3, the family rule - Arn of BiS> Tools: "it looks way way better do it for the other
+  -- ones"): the page is the kit's DASHBOARD. Every section down the left, the picked one's settings big on the
+  -- right, the help strip along the bottom - and the options window is left exactly as it is.
+  H.ok(type(spec.build) == "function" and type(spec.refresh) == "function", "the page draws a dashboard: build and refresh")
+  H.eq(spec.window, nil, "no stand-in button to the options window: the page holds every setting itself")
+  -- the window an earlier section built holds an earlier login's save; in the game both are built after the one
+  -- ADDON_LOADED, on the same table - so build it again on this login's
+  CFG.built, CFG.frame = nil, nil
   local ow = CFG.Build()
   ow:Hide()
   local owParent, owScale = ow:GetParent(), ow:GetScale()
   if page and page.frame then page.frame:Fire("OnShow") end
+  local dash = page and page.frame and page.frame.body and page.frame.body.dash
+  H.ok(dash ~= nil, "showing the page builds the dashboard")
+  dash = dash or { rows = {}, pages = {}, entries = {} }
   H.ok(ow:GetParent() == owParent and ow:GetScale() == owScale, "showing the page: the window keeps its parent and its scale")
   H.ok(not ow:IsShown(), "showing the page: the window stays hidden")
-  local optBtn = page and page.frame and page.frame.optBtn
-  H.ok(optBtn and optBtn:IsShown(), "the page has a button: the options window")
-  if optBtn then optBtn:Fire("OnClick", "LeftButton") end
-  H.ok(ow:IsShown(), "which shows the options window")
-  H.ok(ow:GetParent() == owParent and ow:GetScale() == owScale, "as it always was")
+  H.ok(not (page.frame.optBtn and page.frame.optBtn:IsShown()), "and no stand-in button on the page")
+  local WANT = { "camera", "milestones", "bosses", "loot", "deaths", "world", "group", "journal", "pins", "album" }
+  H.eq(#dash.rows, #WANT, "a row per section down the left")
+  for i, k in ipairs(WANT) do H.eq(dash.rows[i] and dash.rows[i].entry.key, k, "section " .. i .. ": " .. k) end
+  H.eq(dash.list and dash.list.head:GetText(), "SECTIONS", "the list's title")
+  H.eq(dash.count and dash.count:GetText(), "1 of 5 on", "a new install: bosses on; loot, deaths, group photos, pins off")
+  H.eq(dash.selected, "camera", "the camera is picked first")
+  -- every row of the options window is on the dashboard exactly once: a row, a section's switch, or its button
+  local seen = {}
+  local function saw(k) if k then seen[k] = (seen[k] or 0) + 1 end end
+  for _, e in ipairs(dash.entries) do
+    for _, o in ipairs(e.options or {}) do saw(o.key) end
+    saw(e.switch and e.switch.key)
+    saw(e.open and e.open.key)
+    H.ok(type(e.desc) == "string" and #e.desc > 20, "words for a player: " .. tostring(e.key))
+  end
+  for _, r in ipairs(CFG.Rows()) do H.eq(seen[r.key], 1, "on the dashboard once: " .. tostring(r.key)) end
+  -- the SAME tables: no second copy of a setting
+  local winOpt, winRow = {}, {}
+  for _, r in ipairs(ow.rows or {}) do if r.opt then winOpt[r.opt.key], winRow[r.opt.key] = r.opt, r end end
+  local sameT, n = true, 0
+  for _, e in ipairs(dash.entries) do
+    for _, o in ipairs(e.options or {}) do n = n + 1 if winOpt[o.key] ~= o then sameT = false end end
+  end
+  H.ok(n > 0 and sameT, "every dashboard row is the options window's own option table", n)
+
+  local function rowOf(key) for _, r in ipairs(dash.rows) do if r.entry.key == key then return r end end end
+  local function pick(key)
+    local r = rowOf(key)
+    if r then r:Fire("OnClick", "LeftButton") end
+    return dash.pages[key] or {}
+  end
+  local function find(rows, key) for _, r in ipairs(rows) do if r.opt.key == key then return r end end end
+  local loot = pick("loot")
+  H.eq(dash.selected, "loot", "a click on a section picks it")
+  H.ok(#loot == 2 and loot[1]:IsShown() and loot[1].opt.key == "lootQuality" and loot[2].opt.key == "gems",
+       "its own rows on the right: the quality, the gems")
+  H.eq(dash.detail.name:GetText(), "loot", "under its name")
+  H.ok(dash.detail.usage:IsShown() and dash.detail.usage:GetText():find("/bism loot", 1, true), "its command at the foot",
+       dash.detail.usage:GetText())
+  local cam = pick("camera")
+  H.ok(not loot[1]:IsShown(), "picking another: the last one's rows go")
+  -- a setting flipped on the dashboard: the saved value, and the options window's row agrees after its paint
+  local snd = find(cam, "sound")
+  local before = d.sound
+  if snd then snd.sw:Fire("OnClick", "LeftButton") end
+  H.eq(d.sound, not before, "the camera click flipped on the dashboard: the saved value")
+  ow:Paint()
+  H.eq(winRow.sound and winRow.sound.ctl.on, d.sound, "the options window's row agrees after its paint")
+  H.eq(snd and snd.sw.on, d.sound, "and the dashboard's switch says it")
+  local gap = find(cam, "gap")
+  local g0 = d.gap or 8
+  if gap then gap.plus:Fire("OnClick", "LeftButton") end
+  H.eq(d.gap, g0 + 2, "the stepper: seconds between, up by two")
+  ow:Show()
+  if gap then gap.minus:Fire("OnClick", "LeftButton") end
+  H.eq(winRow.gap and winRow.gap.ctl.val:GetText(), tostring(g0), "the options window, open, is repainted at once")
   ow:Hide()
+
+  -- a section's own switch goes through the same setter as /bism on|off
+  NS.Slash("on boss")
+  spec.refresh(page.frame.body)
+  pick("bosses")
+  H.ok(dash.detail.switch:IsShown() and dash.detail.switch.on == true and rowOf("bosses").state:GetText() == "ON",
+       "bosses: the big switch and the list say ON")
+  dash.detail.switch:Fire("OnClick", "LeftButton")
+  H.eq(d.boss, false, "the big switch off: the same saved value /bism off boss writes")
+  H.ok(rowOf("bosses").state:GetText() == "off" and dash.pages.bosses[1].label:GetAlpha() < 1,
+       "the list follows, and its settings grey")
+  NS.Slash("on boss")
+  spec.refresh(page.frame.body)
+  H.ok(dash.detail.switch.on == true and rowOf("bosses").state:GetText() == "ON", "/bism on boss: the page says so at its next paint")
+  rowOf("loot"):Fire("OnClick", "RightButton")
+  H.eq(d.loot, true, "a right-click in the list switches loot on")
+  NS.Slash("off loot")
+  spec.refresh(page.frame.body)
+  H.eq(rowOf("loot").state:GetText(), "off", "/bism off loot: the list says off")
+  -- the pins: switched off keeps "off", switched on comes back to the last choice
+  NS.Slash("pins all")
+  spec.refresh(page.frame.body)
+  pick("pins")
+  H.ok(dash.detail.switch.on == true, "pins all: the pins switch is on")
+  dash.detail.switch:Fire("OnClick", "LeftButton")
+  H.eq(d.pins, "off", "the pins switched off")
+  dash.detail.switch:Fire("OnClick", "LeftButton")
+  H.eq(d.pins, "all", "and on again: back to every character's")
+
+  -- the buttons put the game's options away first, so the journal and the picture are not behind them
+  local up = true
+  local keepPanel, keepHide = rawget(_G, "SettingsPanel"), rawget(_G, "HideUIPanel")
+  _G.SettingsPanel = { IsShown = function() return up end, Hide = function() up = false end }
+  _G.HideUIPanel = function(x) x:Hide() end
+  pick("journal")
+  J.Hide()
+  H.eq(dash.detail.open.label:GetText(), "the journal", "the journal's section: a button to it")
+  dash.detail.open:Fire("OnClick", "LeftButton")
+  H.ok(not up and J.frame:IsShown(), "which puts the game's options away and opens the journal")
+  J.Hide()
+  up = true
+  pick("pins")
+  dash.detail.open:Fire("OnClick", "LeftButton")
+  H.ok(not up and J.frame:IsShown() and J.page == "map", "the pins' button: the journal's map")
+  J.Hide()
+  J.Tab("memories")
+  up = true
+  local shotWithPanel = "not shot"
+  local realShoot = M.Shoot
+  M.Shoot = function() shotWithPanel = up return nil, "test" end
+  local now = find(pick("camera"), "now")
+  if now then now.btn:Fire("OnClick", "LeftButton") end
+  M.Shoot = realShoot
+  H.eq(shotWithPanel, false, "a picture now from the page: the game's options go first, the picture is of the game")
+  _G.SettingsPanel, _G.HideUIPanel = keepPanel, keepHide
+  pick("album")
+  H.ok(dash.detail.none:IsShown() and dash.detail.usage:GetText():find("/bism path", 1, true)
+       and dash.detail.open:IsShown(), "the album page: words, its commands, the journal (the address to copy is there)")
+
   H.eq(spec.open and spec.open.label, "your memories", "its big button: your memories")
   J.Hide()
   if spec.open then spec.open.func() end

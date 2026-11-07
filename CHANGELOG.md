@@ -4,7 +4,8 @@
 
 - **Already using BiS Memories? Nothing changes for you.** Every switch you had stays exactly as it was - including the ones you never touched.
 - **A quiet start for new players.** A fresh install takes pictures of the big moments only: level ups, a boss's first kill (and your fastest), achievements, and firsts like your first mount. Loot, deaths, duels, new places, exalted, the weekly candid, gamba wins, group photos, the camera click, the on-this-day message and the world-map pins all start off - switch on whichever you want.
-- **All the options in one place.** Press Escape, then Options, then AddOns, and find **BiS>**: every BiS addon you have is listed there, and **BiS> Memories** says what is on, with buttons to your memories and to the options window.
+- **All the options in one place.** Press Escape, then Options, then AddOns, and find **BiS>**: every BiS addon you have is listed there, with what is on, and a page for each.
+- BiS> Memories in Esc > Options > AddOns is a full-page dashboard now: every section down the left, its settings big and readable on the right.
 - **The minimap button, the same as every BiS addon.** Left-click opens your memories; right-click opens the options window (right-click again closes it).
 - **World-map pins are a camera viewfinder now**, four corner brackets in the memory's colour with nothing in the middle, so a quest marker or a road under one stays in plain sight. They also sit under the game's quest pins, so the quest always takes the click.
 - **Group photos started by others have their own switch.** "others can call one" decides whether someone else's `/bism group` can put a countdown on your screen and take your picture. Off for new players, on for everyone who had the addon.
