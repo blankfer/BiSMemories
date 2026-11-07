@@ -1,6 +1,6 @@
 # BiSMemories
 
-## Unreleased
+## 0.10.0
 
 - **Clearer windows.** In the options window (and the minimap menu) every button, box and row lights up under the mouse, the window is 20% bigger, and the bottom strip shows which version you are on until you hover a setting.
 - **Short words for the long commands.** Every `/bism` command longer than 4 letters has a short one too: `snd` (sound), `clr` (clear), `zone` (zones), `stat` (status), `hear` (heard), `book` (journal), `opt` (options), `grp` (group), `otd` (onthisday), `each` (every), `cln` (clean). The long ones still work, and `/bism help` shows both.
