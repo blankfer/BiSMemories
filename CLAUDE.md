@@ -17,10 +17,23 @@ Read ../_bisdev/CLAUDE.md first.
   riding), the biggest BiS Gamba win (BiSGambaAPI callback). `M.OnEvent` scrubs secrets, then `M.Decide`.
 - `Core/Moments.lua`: on this day (`M.OnThisDay`, once a day), the year (`M.Summary`, `M.SummaryLines`),
   the group photo (`M.GroupPhoto` / `M.Countdown`, LibBiSComm MOD "MEM" CMD "SNAP").
-- `Core/Map.lua` (`ns.MapView`): the journal's map page - map art tiles + `C_Map.GetMapRectOnMap` (BiS
-  Guild's Where.lua way). `Core/Pins.lua` (`ns.Pins`): world-map pins via HereBeDragons-Pins.
-- `Core/Journal.lua` (`ns.J`): the 1.43:1 window - list + detail with the 3D postcard (`J.Postcard`,
-  poses `J.POSE`), map and year pages, the on-this-day card (`J.Toast`), the countdown (`J.Count`).
+- `Core/Map.lua` (`ns.MapView`): the journal's map page as a NAVIGATION DISPLAY (8 Nov 2026) - map art tiles
+  (kept per map, `MV.pieces`) + `C_Map.GetMapRectOnMap` (BiS Guild's Where.lua way) on a canvas inside a
+  ScrollFrame that cuts at the glass; a view per panel `{ z, cx, cy }` (`MV.ZOOMS` 1-16x, `MV.Zoom` around the
+  cursor, `MV.ZoomOn`, drag = an OnUpdate only while the button is down, `MV.StopDrag`); pins are HOLLOW squares
+  (four sides + a dark outline, no fill), merged within `MV.MERGE` px into one box with a count (`MV.Clusters`).
+  `Core/Pins.lua` (`ns.Pins`): world-map pins via HereBeDragons-Pins (the corner-bracket viewfinder).
+- `Core/Journal.lua` (`ns.J`): the GLASS COCKPIT (8 Nov 2026), 1001 x 700 (1.43:1, `J.Fit` scales it down on a
+  short screen, clamped): BiSTheme housing, two black displays (`f.left`, `f.right`), the display colours in
+  `J.GLASS` / `J.Glass` / `J.Ink` (green ok, cyan labels, magenta chosen, amber caution, white data). Bezel keys
+  (`J.Key`: raised, pops, green `lit` bar) - `f.tabs` MEMORIES / MAP / YEAR, `f.who` CHARACTER, `f.close`, soft
+  keys `f.prev`/`f.next` (memories) or `f.rangeDown`/`f.knob`/`f.rangeUp` (map). Left: `J.Pages()` (`J.PER` = 6
+  memories a page, night headings repeated), `J.Turn`, `J.PageOf`, magenta brackets `f.selL/R`; or the map
+  (`J.PaintMap`) or the year. Right: the postcard (`J.Postcard`, poses `J.POSE`; the creature by `display`,
+  BiS Tools' `CodexCreature`, else `npc` - `J.Ask` looks again `J.LOAD_WAIT` later, asks again if nothing drew,
+  `J.Look` sets the pose (a boss `J.DEAD`, UNVERIFIED, else 1) and the camera only once drawn), the note, the data
+  blocks `f.data` (`J.DATA`). The memo line (ALBUM, `f.pathBox`, the count), the on-this-day card (`J.Toast`),
+  the countdown (`J.Count`).
 - `UI/Options.lua` (`ns.CFG`): BiSTheme's options window in two columns, the minimap button (kit standard, Minimap
   minor 5: left = journal, right = `CFG.Toggle`, our own options window - right-click again closes it, never the
   game's options) and the BiS> Memories page in the game's options (`CFG.RegisterPage`, at PLAYER_LOGIN). Since 8 Nov

@@ -1,5 +1,16 @@
 # BiSMemories
 
+## Unreleased
+
+- **Your journal is a jetliner cockpit now.** A bigger window (same shape) with two black glass screens side by side, each doing one job in big, easy type. Colour means something: green = on, cyan = labels, magenta = the memory you picked, white = the facts.
+- **Keys instead of tabs.** MEMORIES, MAP, YEAR and CHARACTER (just this character, or all of them) are raised keys along the top; the one you are on has a green bar.
+- **Six memories a page, big.** The left screen is a page like a flight computer's: "MEMORIES 1/13", six memories with the time and kind over each, each night's heading as a cyan line. PREV PAGE / NEXT PAGE underneath, or use the mouse wheel. The one you picked sits in magenta brackets.
+- **The memory on the right screen.** The 3D postcard on top, the note in big white letters, then WHERE, LEVEL, WITH, FIGHT TOOK and FILE in their own places.
+- **The boss lies dead beside you.** A boss kill's postcard now shows the boss lying at your feet, not just you.
+- **Zoom the map.** The mouse wheel zooms in and out around the pointer, drag to move around, and the RANGE knob under the map (with - and + keys) shows how close you are (1x to 16x). Pins are hollow squares with an empty middle. Pins too close together become one box with a number; zoom in (or click the box) and they spread out. Click a pin to open that memory on the right.
+- **The album line at the bottom** shows ALBUM, the path to copy, and how many memories you have kept. How to use the path is in its tooltip.
+- **For other addons:** `BiSMemoriesAPI.TakeMemory(note, kind, from, extra)` can say which creature it was (`npc`, `display`) and ask for a picture with the interface left in (`keepUI = true`). BiS Shell's ADVENT.EXE uses this so its boss pictures show the game screen.
+
 ## 1.0.0 - Forever 1.0
 
 - **Already using BiS Memories? Nothing changes for you.** Every switch you had stays exactly as it was - including the ones you never touched.
