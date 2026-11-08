@@ -67,7 +67,10 @@ Read ../_bisdev/CLAUDE.md first.
   API `ShareCard` / `ShareMemory` (version 4) through `S.Card` / `S.Take`.
 - Cargo (Memories.lua, 8 Nov 2026): a boss memory keeps item links seen in the `M.CARGO_FOR` s after it (`M.WatchCargo`,
   a timer ends it; `M.AddCargo` from CHAT_MSG_LOOT, `M.LootWindow` on LOOT_OPENED), `M.CARGO_MAX` at most.
-- `Album/BiSMemories-Album.html`: a "share" note with a crop (`cropOf`) is drawn as its ticket cut out with a canvas
+- `Album/BiSMemories-Album.html`: the NIGHT FLIGHT look (8 Nov 2026, the family style: a night drive in a luxury cockpit) - the header
+  is a windscreen (`.sky`: sunset, striped sun, `.city` skyline path, the rolling `.floor` grid, `.pillar`s) over a leather `.dash`
+  and a walnut `.trim`; pictures are glass displays in a bezel, the search is a green scratchpad, counts are keys (magenta when
+  chosen); colours are the journal's J.GLASS, system fonts only (offline). A "share" note with a crop (`cropOf`) is drawn as its ticket cut out with a canvas
   (`shareFigure`, `cutInto`), SAVE IMAGE (`saveCard`, toDataURL + download) and COPY (`copyCard`, ClipboardItem, shown
   only where it exists); a picture opened by relative path cannot be handed over (canvas taint) - `pickCard` asks for it.
 - `UI/Options.lua` (`ns.CFG`): BiSTheme's options window in two columns, the minimap button (kit standard, Minimap

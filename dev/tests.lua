@@ -820,6 +820,12 @@ do
   H.ok(page and page:find("http", 1, true) == nil or not page:find("src=\"http", 1, true),
        "nothing is fetched from the internet: it must work offline")
   H.ok(bytes(HERE .. "/../Album/README.txt") ~= nil, "with the instructions beside it")
+  -- THE NIGHT FLIGHT (Arn, 8 Nov 2026: the album "also needed that new and improved cockpit ... reimagined in a luxurious
+  -- cockpit"): the windscreen over the dash, drawn by the page itself - no font or picture is fetched, it stays offline
+  H.ok(page and page:find('class="sky"', 1, true) and page:find('class="dash"', 1, true) and page:find('class="trim"', 1, true),
+       "the album is the night flight: a windscreen, the leather dash, the walnut rail")
+  H.ok(page and not page:find("fonts.googleapis", 1, true) and not page:find("@import", 1, true) and not page:find("url(http", 1, true),
+       "and its look fetches nothing")
   -- ONE STEP (Arn, 21 Oct 2026: "make it easy like the google notebook thing"): hand it the WoW folder and it
   -- finds both halves; it walks only where they can be (never Data or Interface); the X closes (the side
   -- strips used to cover it). The logic itself was run in a browser on the day it was written.
