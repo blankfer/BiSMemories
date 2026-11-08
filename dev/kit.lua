@@ -10,6 +10,7 @@
 local H = {}
 _G.HARNESS = H
 H.sent, H.prints, H.sounds, H.who = {}, {}, {}, {}
+H.knownCreature, H.noCreature, H.noAnim = {}, {}, {}      -- the 3D model's session memory (see the model below)
 
 local function isnum(v) return type(v) == "number" end
 
@@ -267,6 +268,11 @@ local function newFrame(ftype, name, parent)
     function fr:SetEnabled(v) self._enabled = v and true or false end
     function fr:IsEnabled() return self._enabled end
     function fr:EnableMouse(v) self._mouse = v end
+    -- kept (8 Nov 2026, the glass cockpit): "the wheel turns this page / zooms this map" and "the window stays on
+    -- the screen" were untestable while these answered silence
+    function fr:EnableMouseWheel(v) self._wheel = v and true or false end
+    function fr:SetClampedToScreen(v) self._clamped = v and true or false end
+    function fr:IsClampedToScreen() return self._clamped or false end
     function fr:SetVerticalScroll(v) self._scroll = v end
     function fr:GetVerticalScroll() return self._scroll or 0 end
     function fr:SetScrollChild(c) self._child = c end
@@ -276,16 +282,63 @@ local function newFrame(ftype, name, parent)
     -- client refuses anything else. TryOn and Undress are UNVERIFIED on Forever (a frame's methods are
     -- not in the census); the code pcalls them.
     if ftype == "DressUpModel" or ftype == "PlayerModel" then
-        function fr:SetUnit(u) self._unit, self._creature, self._tried = u, nil, {} end
+        -- WHAT THE CLIENT DOES, INCLUDING THE INCONVENIENT PARTS (8 Nov 2026, the boss lying dead on the postcard -
+        -- BiS Shell's and BiS Tools' kits measured the same; copied, not invented):
+        --   * a CREATURE the client has not drawn this session draws NOTHING on its first ask, and draws on the
+        --     next (Arn's probe, 18 Oct: 6 of 20 the first time, 20 of 20 the second). H.knownCreature is the
+        --     session's memory; an id in H.noCreature never draws.
+        --   * a model that is not on the screen (it, or a parent, hidden) loads nothing ("a hidden model may never
+        --     load"): asked while hidden, nothing draws, and nothing is remembered for next time.
+        --   * a NEW model resets the camera: every setter forgets the zoom and the distance - a camera set before
+        --     the model drew is gone.
+        --   * "is a model there" is GetModelFileID: a file id, 0 when nothing drew.
+        --   * HasAnimation(id): false for an id in H.noAnim (UNVERIFIED on Forever - the code pcalls it).
+        local function fresh(self, file)
+            self._file, self._zoom, self._cam = file, nil, nil
+        end
+        function fr:SetUnit(u)
+            self._unit, self._creature, self._display, self._tried = u, nil, nil, {}
+            fresh(self, self:IsVisible() and 200000 or 0)
+        end
         function fr:SetCreature(id)
             if type(id) ~= "number" then error("SetCreature needs an npc id", 0) end
-            self._creature, self._unit = id, nil
+            self._creature, self._unit, self._display = id, nil, nil
+            self._asks = (self._asks or 0) + 1
+            if not self:IsVisible() or H.noCreature[id] then fresh(self, 0)
+            elseif H.knownCreature[id] then fresh(self, 100000 + id)
+            else fresh(self, 0) H.knownCreature[id] = true end
         end
-        function fr:ClearModel() self._unit, self._creature, self._tried = nil, nil, {} end
+        function fr:SetDisplayInfo(id)
+            if type(id) ~= "number" then error("SetDisplayInfo needs a display id", 0) end
+            self._display, self._creature, self._unit = id, nil, nil
+            self._asks = (self._asks or 0) + 1
+            fresh(self, self:IsVisible() and (300000 + id) or 0)
+        end
+        function fr:GetModelFileID() return self._file or 0 end
+        function fr:ClearModel()
+            self._unit, self._creature, self._display, self._tried = nil, nil, nil, {}
+            self._asks = 0                                -- the suite's own count of asks, per model shown
+            fresh(self, 0)
+        end
         function fr:Undress() self._undressed = true self._tried = {} end
         function fr:TryOn(link) self._tried = self._tried or {} self._tried[#self._tried + 1] = link end
-        function fr:SetAnimation(n) self._anim = n end
-        function fr:SetFacing(r) self._facing = r end
+        function fr:SetAnimation(n)
+            if type(n) ~= "number" then error("SetAnimation needs an animation id", 0) end
+            self._anim = n
+        end
+        function fr:HasAnimation(n) return not H.noAnim[n] end
+        function fr:SetFacing(r)
+            if type(r) ~= "number" then error("SetFacing needs radians", 0) end
+            self._facing = r
+        end
+        function fr:SetPortraitZoom(z)
+            if type(z) ~= "number" then error("SetPortraitZoom needs a number", 0) end
+            self._zoom = z
+        end
+        function fr:SetCamDistanceScale(s)
+            if type(s) ~= "number" then error("SetCamDistanceScale needs a number", 0) end
+            self._cam = s
+        end
     end
 
     if ftype == "EditBox" then
