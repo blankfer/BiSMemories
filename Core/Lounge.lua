@@ -61,6 +61,7 @@ L.PASS = { 30.5, 20.5, 37, 17 }
 L.CARD = { 31, 39.4, 36, 6.0 }
 L.SIGN = { 31, 46.4, 26, 2.4 }
 L.CALL = { 31, 50.9, 37.2, 2.9 }
+L.SHARE = { 58.2, 46.3, 9.8, 2.6 }   -- the SHARE pill, beside the lit sign (Share.lua)
 L.MAP = { 69, 20.2, 29, 21.5 }
 L.FE = { 69, 43, 29, 9.6 }
 
@@ -166,6 +167,9 @@ local function width(s, size)
   for ch in s:gmatch(".") do w = w + (ch:match("[%u%d]") and 0.75 or ch:match("%l") and 0.55 or 0.3) end
   return w * size
 end
+
+-- the same hands for the share card (Share.lua), which draws in the lounge's units and faces
+L.Px, L.At, L.Fill, L.Art, L.Word, L.Box, L.Width = px, at, fill, art, word, box, width
 
 --- UTF-8 characters, one a tile (an accented name is one tile, not two).
 local function chars(s)
@@ -706,6 +710,12 @@ local function buildCall(room)
     if not ok then ns.Print("no group photo - %s", tostring(why)) end
   end)
   L.call.journal = pill(c, "JOURNAL", 28.8, 8.4, function() L.ToJournal() end)
+  -- SHARE (8 Nov 2026): the chosen memory as a share card - its boarding pass big and alone, one picture (Share.lua)
+  local s = CreateFrame("Frame", nil, room)
+  at(s, room, L.SHARE[1], L.SHARE[2], L.SHARE[3], L.SHARE[4])
+  L.shareRow = s
+  L.call.share = pill(s, "SHARE", 0, L.SHARE[3], function() if ns.Share and J.sel then ns.Share.Take(J.sel) end end)
+  L.call.share.popIf = function() return J.sel ~= nil end
 end
 
 local function buildMap(room)
@@ -825,7 +835,7 @@ function L.Build()
   buildMap(room)
   L.fe = buildGauges(room)
   L.parts = { board = L.board, seat = L.seat, surround = L.surround, pass = L.pass.frame, card = L.card.frame,
-              sign = L.sign.frame, call = L.call.frame, map = L.paper, gauges = L.fe }
+              sign = L.sign.frame, call = L.call.frame, share = L.shareRow, map = L.paper, gauges = L.fe }
   -- ESCAPE CLOSES IT (the family's rule); a FIGHT closes it at once
   if UISpecialFrames then table.insert(UISpecialFrames, "BiSMemoriesLounge") end
   back:SetScript("OnEvent", function(_, event)

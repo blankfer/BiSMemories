@@ -6,6 +6,7 @@ Our own pictures, made here from arithmetic - nothing from a website, nothing of
                       covered, a soft shadow round the frame and inside the hole.
   * Media/disc.tga    a white disc (tinted in the game): a gauge's face, a button's round ends, the map's round keys.
   * Media/ring.tga    a white ring: a gauge's bezel.
+  * Media/oval.tga    the share card's oval window: cream and grey rings round a clear oval, the seat's paper outside.
 
 Plain uncompressed 32-bit TGA, bottom-left origin - the oldest kind every WoW client reads. Run it again only to change
 the art:   python dev/art.py   (from the addon root). No libraries needed.
@@ -120,9 +121,66 @@ def round_art(path, inner, size=128, n=4):
     write_tga(path, size, size, px)
 
 
+# THE SHARE CARD'S OVAL WINDOW (8 Nov 2026, Core/Share.lua): the ticket's seat column holds a smaller cabin window -
+# the mockup's .oval, 15 x 22 units with corners rounded 50% / 42% (half its width across, 42% of its height down, so
+# its sides run straight for a little in the middle), a cream ring 0.9 round it and a grey one 0.3 past that. Outside
+# the rings, the seat column's own paper, opaque, so the square corners of the models' box never show.
+OVAL_W, OVAL_H = 15.0, 22.0        # Share.lua S.OVAL
+OVAL_RY = 0.42 * OVAL_H
+OVAL_RING, OVAL_EDGE = 0.9, 0.3    # Share.lua S.RIM = their sum
+OVAL_ART_W, OVAL_ART_H = OVAL_W + 2 * (OVAL_RING + OVAL_EDGE), OVAL_H + 2 * (OVAL_RING + OVAL_EDGE)
+SEAT_C = (0xE2, 0xD6, 0xBB)        # Share.lua S.COLOUR.seat - the two must match
+RING_C = (0xF4, 0xEF, 0xE2)
+EDGE_C = (0xB9, 0xAE, 0x95)
+
+
+def grow_box(px, py, hx, hy, ry):
+    """grow() for any rounded box: half-width hx, half-height hy, its ends half-ellipses ry high."""
+    ax, ay = abs(px), abs(py)
+    straight = hy - ry
+    if ay <= straight:
+        return ax - hx
+    dy = ay - straight
+    d = (ax ** 2 + dy ** 2) ** 0.5
+    if d == 0:
+        return -min(hx, ry)
+    r = (hx * ry) / ((ry * ax / d) ** 2 + (hx * dy / d) ** 2) ** 0.5
+    return d - r
+
+
+def oval_pixel(u, v):
+    t = grow_box(u, v, OVAL_W / 2, OVAL_H / 2, OVAL_RY)
+    if t < 0:
+        return (0, 0, 0, 0)
+    if t < OVAL_RING:
+        return (RING_C[0], RING_C[1], RING_C[2], 255)
+    if t < OVAL_RING + OVAL_EDGE:
+        return (EDGE_C[0], EDGE_C[1], EDGE_C[2], 255)
+    return (SEAT_C[0], SEAT_C[1], SEAT_C[2], 255)
+
+
+def oval(path, w=512, h=512, n=3):
+    def px(x, y):
+        acc = [0.0, 0.0, 0.0, 0.0]
+        for i in range(n):
+            for j in range(n):
+                u = ((x + (i + 0.5) / n) / w - 0.5) * OVAL_ART_W
+                v = ((y + (j + 0.5) / n) / h - 0.5) * OVAL_ART_H
+                r, g, b, a = oval_pixel(u, v)
+                acc[0] += r * a
+                acc[1] += g * a
+                acc[2] += b * a
+                acc[3] += a
+        if acc[3] <= 0:
+            return (0, 0, 0, 0)
+        return (acc[0] / acc[3], acc[1] / acc[3], acc[2] / acc[3], acc[3] / (n * n))
+    write_tga(path, w, h, px)
+
+
 if __name__ == "__main__":
     os.makedirs(MEDIA, exist_ok=True)
     window(os.path.join(MEDIA, "window.tga"))
     round_art(os.path.join(MEDIA, "disc.tga"), 0)
     round_art(os.path.join(MEDIA, "ring.tga"), 0.86)
-    print("art: window.tga, disc.tga, ring.tga in", os.path.normpath(MEDIA))
+    oval(os.path.join(MEDIA, "oval.tga"))
+    print("art: window.tga, disc.tga, ring.tga, oval.tga in", os.path.normpath(MEDIA))

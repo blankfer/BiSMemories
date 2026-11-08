@@ -13,6 +13,8 @@ local ALLOWED = {
     BiSMemoriesJournal = true, BiSMemoriesOptions = true, BiSMinimapBiSMemories = true,
     -- 8 Nov 2026: the Clipper Lounge, the full screen (named: Escape closes it)
     BiSMemoriesLounge = true,
+    -- 8 Nov 2026: the share card (named: Escape puts it away)
+    BiSMemoriesShare = true,
     -- the third-party map libs (Libs/THIRD-PARTY.txt): LibStub's one global, the pins' show flags
     LibStub = true, HBD_PINS_WORLDMAP_SHOW_PARENT = true, HBD_PINS_WORLDMAP_SHOW_CONTINENT = true,
     HBD_PINS_WORLDMAP_SHOW_WORLD = true,
@@ -91,9 +93,10 @@ H.eq(NS.VERSION, TOC_VERSION, "version is the TOC's")
 -- THE API BEFORE LOGIN: the files are loaded, the saved notes are not. Every call answers, none throws.
 do
   local A = _G.BiSMemoriesAPI
-  H.ok(type(A) == "table" and A.major == 1 and A.version == 3, "BiSMemoriesAPI is there, major 1, version 3")
+  H.ok(type(A) == "table" and A.major == 1 and A.version == 4, "BiSMemoriesAPI is there, major 1, version 4")
   for _, call in ipairs({
     { "Ready", {} }, { "Memories", {} }, { "Latest", {} }, { "Kinds", {} }, { "TakeMemory", { "too early" } },
+    { "ShareCard", { "BiSGuild", { title = "too early" } } }, { "ShareMemory", { "BiSGuild", 1 } },
   }) do
     local ok, got, why = pcall(A[call[1]], unpack(call[2]))
     H.ok(ok and got == nil and why == "not ready", call[1] .. " before login: nil, \"not ready\"", tostring(why))
@@ -2172,7 +2175,7 @@ end)()
   H.ok(ow:GetParent() == owParent and ow:GetScale() == owScale, "showing the page: the window keeps its parent and its scale")
   H.ok(not ow:IsShown(), "showing the page: the window stays hidden")
   H.ok(not (page.frame.optBtn and page.frame.optBtn:IsShown()), "and no stand-in button on the page")
-  local WANT = { "camera", "milestones", "bosses", "loot", "deaths", "world", "group", "journal", "pins", "album" }
+  local WANT = { "camera", "milestones", "bosses", "loot", "deaths", "world", "group", "journal", "pins", "album", "share" }
   H.eq(#dash.rows, #WANT, "a row per section down the left")
   for i, k in ipairs(WANT) do H.eq(dash.rows[i] and dash.rows[i].entry.key, k, "section " .. i .. ": " .. k) end
   H.eq(dash.list and dash.list.head:GetText(), "SECTIONS", "the list's title")
@@ -2755,7 +2758,7 @@ end)()
 
   H.section("8 Nov: TakeMemory says which creature it was (API version 3)")
   local A = _G.BiSMemoriesAPI
-  H.eq(A.version, 3, "BiSMemoriesAPI version 3")
+  H.ok(A.version >= 3, "BiSMemoriesAPI version 3 or later", A.version)
   wipe()
   local got = A.TakeMemory("ADVENT.EXE: SKUM slain", "boss", "BiSShell",
                            { npc = 3674, display = 1234, detail = "hacked", reason = "loot", evil = true })
@@ -3330,6 +3333,535 @@ end)()
   _G.C_Map, _G.RAID_CLASS_COLORS = keepMap, keepColours
   MV.rects, MV.pieces = {}, {}
   _G.C_Timer = keepTimer
+end)()
+
+-- ===================================================================== 8 Nov: the share card
+-- Arn, 8 Nov 2026: "maybe a way to save to social media? ... save to a file on their computer of only the ticket stub
+-- thing ... they go on twitter and they can upload their dungeon clear or boss taken down maybe all the loot that
+-- dropped all the party they were in option for privacy if they don't want to share in game name" - "API it too for
+-- other addons" - and on the mockup: "Just say post it anywhere, sure keep name hidden". The boarding pass BIG and ALONE
+-- on the lounge's teal, the rest of the interface out of the way, one picture - and the album page cuts the ticket out.
+;(function()
+  local J, M, L, S, A = NS.J, NS.M, NS.Lounge, NS.Share, _G.BiSMemoriesAPI
+  H.section("8 Nov: the share card - it is there")
+  H.ok(type(S) == "table" and type(S.Take) == "function", "the share card is loaded (Core/Share.lua, ns.Share)")
+  if type(S) ~= "table" then return end
+  local Cost = dofile(ROOT .. "/../_bisdev/dev/cost.lua")
+  local d = NS.DB()
+  local log = M.Log()
+  local function wipe() for k = #log, 1, -1 do log[k] = nil end end
+  local q = {}
+  local keepTimer, keepShot, keepClass, keepRace = _G.C_Timer, _G.Screenshot, _G.UnitClass, _G.UnitRace
+  local keepW, keepH, keepTime = UIParent._w, UIParent._h, _G.GetTime
+  _G.C_Timer = { After = function(t, fn) q[#q + 1] = { t = t, fn = fn } end }
+  local function run() local t = q q = {} for _, x in ipairs(t) do x.fn() end return #t end
+  local function settle(n) for _ = 1, n or 40 do if run() == 0 then return end end end
+  local snaps = {}
+  -- the timers, batch by batch, until the shutter fires (a batch's own new timers wait for the next)
+  local function untilShot() local n0 = #snaps for _ = 1, 40 do if #snaps > n0 then return true end if run() == 0 then return #snaps > n0 end end return #snaps > n0 end
+  -- the shutter: what was on the screen at the instant of each picture
+  -- (seen = shown AND not faded: the client multiplies a frame's alpha by every parent's)
+  local function seen(fr)
+    local a, p = 1, fr
+    while p do
+      if p._shown == false then return false end
+      a = a * (p.GetAlpha and p:GetAlpha() or 1)
+      p = p._parent
+    end
+    return a > 0
+  end
+  _G.Screenshot = function()
+    snaps[#snaps + 1] = { ui = UIParent:GetAlpha(), card = S.back and seen(S.back) or false,
+                          them = S.post and S.post.them._anim, you = S.post and S.post.you:IsShown() }
+  end
+  _G.UnitClass = function() return "Shaman", "SHAMAN" end
+  _G.UnitRace = function() return "Tauren", "Tauren" end
+  local now = 1e8                -- past every clock an earlier section ran
+  _G.GetTime = function() return now end
+  UIParent._w, UIParent._h = 1920, 1080
+  d.gap, d.delay = 0, 0
+  M.me = nil
+  J.everyone, J.sel = nil, nil
+  J.Hide()
+  if L.back then L.Hide() end
+  local me = M.Me()
+  local T0 = os.time({ year = 2026, month = 11, day = 7, hour = 23, min = 43, sec = 0 })
+  wipe()
+  local CREW = { "Acido Wildhammer", "Macready", "Bologna", "Qazo" }
+  local boss = { reason = "boss", detail = "first kill: Mutanus the Devourer", zone = "Wailing Caverns - Dreamer's Rock",
+    level = 22, npc = 93654, secs = 41, at = T0, char = me, class = "SHAMAN", race = "Tauren",
+    with = { CREW[1], CREW[2], CREW[3], CREW[4] }, withClass = { "ROGUE", "HUNTER", "DRUID", "MAGE" },
+    cargo = { "|cff0070dd|Hitem:6627::::::::22:::::|h[Mutant Scale Breastplate]|h|r",
+              "|cff1eff00|Hitem:6629::::::::22:::::|h[Glowing Lizardscale Cloak]|h|r" } }
+  local before = { reason = "zone", detail = "The Barrens", zone = "The Barrens", level = 21, at = T0 - 3600, char = me }
+  log[1], log[2] = boss, before
+  local function texts()
+    local out = {}
+    for _, fs in ipairs(H.labels) do
+      if fs._shown ~= false and fs._text ~= "" and S.back and insideShown(fs, S.back) then out[#out + 1] = strip(fs._text) end
+    end
+    return out
+  end
+  local function onCard(s)
+    for _, t in ipairs(texts()) do if t:find(s, 1, true) then return true end end
+    return false
+  end
+  local function txt(fs) return strip(fs and fs._text or "") end
+
+  H.section("8 Nov: the share card - names hidden by default, for new installs and old saves")
+  do
+    local keepDB, keepChar = _G.BiSMemoriesDB, _G.BiSMemoriesCharDB
+    local function login(acct, char)
+      _G.BiSMemoriesDB, _G.BiSMemoriesCharDB = acct, char
+      fire("ADDON_LOADED", "BiSMemories")
+      return _G.BiSMemoriesDB
+    end
+    local n = login(nil, nil)
+    H.eq(rawget(n, "shareHidden"), true, "a new install: names hidden on a share card")
+    local old = login({ comm = true, forever10 = true, log = { { at = 5, reason = "boss", detail = "Hogger" } } }, nil)
+    H.eq(rawget(old, "shareHidden"), true, "an existing save (1.0, stamped): the new setting WRITTEN in, hidden")
+    H.eq(old[NS.SHARE_STAMP or "?"], true, "and stamped, so it is written once")
+    old.shareHidden = false
+    old = login(old, nil)
+    H.eq(old.shareHidden, false, "a player who showed names keeps them shown at the next login")
+    local pre = login({ comm = true, log = { { at = 6, reason = "levelup", detail = "level 2" } } }, nil)
+    H.eq(rawget(pre, "shareHidden"), true, "a 0.10 save (not even 1.0-stamped): hidden too")
+    _G.BiSMemoriesDB, _G.BiSMemoriesCharDB = keepDB, keepChar
+    d = NS.DB()
+    log = M.Log()
+    wipe()
+    log[1], log[2] = boss, before
+    local rows = {}
+    for _, r in ipairs(NS.CFG.Rows()) do rows[r.key] = r end
+    local r = rows.shareHidden
+    H.ok(r and r.kind == "toggle", "a row in the options window: names hidden")
+    d.shareHidden = true
+    H.ok(r and r.get(d) == true, "it reads hidden")
+    if r then r.set(d, false) end
+    H.eq(d.shareHidden, false, "and switches names on")
+    if r then r.set(d, true) end
+    local found
+    for _, p in ipairs(NS.CFG.Pages()) do
+      for _, o in ipairs(p.options or {}) do if o.key == "shareHidden" then found = p end end
+    end
+    H.ok(found and found.key == "share" and type(found.desc) == "string" and found.usage:find("/bism share", 1, true),
+         "and a section of its own on the BiS> page, its command at the foot")
+  end
+
+  H.section("8 Nov: the share card - the card, names shown")
+  d.shareHidden = false
+  local e, why = S.Take(boss)
+  H.ok(e and e.reason == "share", "a share card is taken for the memory", tostring(why))
+  local back = S.back
+  H.ok(back and back:IsShown(), "on its own frame")
+  H.eq(back and back:GetFrameStrata(), "FULLSCREEN_DIALOG", "over everything")
+  local up, under = back and back._parent, false
+  while up do if up == UIParent then under = true end up = up._parent end
+  H.ok(back and not under, "NOT inside UIParent: the clean shot fades the interface, never the card")
+  H.ok(back and back._all, "the whole screen")
+  local F = S.f
+  H.eq(txt(F.brand), "BiS> MEMORIES", "the brand: BiS> Memories")
+  H.eq(txt(F.head), "BOARDING PASS · FIRST CLASS", "BOARDING PASS · FIRST CLASS")
+  H.eq(txt(F.title), "Mutanus the Devourer", "the title, big")
+  H.eq(txt(F.line), "FIRST KILL · 0:41", "the tangerine line: first kill, and how long")
+  H.ok((F.title._size or 0) > (F.line._size or 0) * 2, "the title much bigger than the line")
+  H.eq(txt(F.fromCode), "BAR", "the route: from the memory before (The Barrens)")
+  H.eq(txt(F.fromName), "THE BARRENS", "its name")
+  H.eq(txt(F.toCode), "WC", "to this one (Wailing Caverns)")
+  H.eq(txt(F.toName), "WAILING CAVERNS", "its name")
+  H.eq(txt(F.val.passenger), "KUMLUST", "PASSENGER: the character, no realm")
+  H.eq(txt(F.val.seat), "LVL 22", "SEAT: the level")
+  H.eq(txt(F.val.date), os.date("%d %b %Y", T0):upper(), "DATE, with the year")
+  H.eq(txt(F.val.time), "23:43", "TIME")
+  H.eq(txt(F.crewLab), "CREW", "CREW")
+  for _, name in ipairs(CREW) do H.ok(txt(F.crew):find(name, 1, true), "the crew by name: " .. name, txt(F.crew)) end
+  H.ok(F.crew._text:find("|cff9a8a00Acido", 1, true), "in their class colours (a rogue, on paper)", F.crew._text)
+  H.eq(txt(F.cargoLab), "CARGO", "CARGO")
+  H.ok(txt(F.cargo):find("Mutant Scale Breastplate", 1, true) and txt(F.cargo):find("Glowing Lizardscale Cloak", 1, true),
+       "the loot that dropped, by name", txt(F.cargo))
+  H.ok(not txt(F.cargo):find("item:", 1, true) and F.cargo._text:find("|cff0f63d6Mutant", 1, true),
+       "no link codes; a rare in a blue that reads on paper", F.cargo._text)
+  H.eq(txt(F.kind), "BOSS", "the stub: the kind")
+  local place = txt(F.place)
+  H.ok(place:find("WAILING CAVERNS", 1, true) and place:find("DREAMER'S ROCK", 1, true) and place:find("FLIGHT BOS", 1, true),
+       "the stub: the place, the spot, the flight", place)
+  H.eq(txt(F.stamp), "BiS> MEMORIES", "the stamp: BiS> Memories")
+  H.eq(txt(F.stampSmall), "a WoW addon · CurseForge", "a WoW addon · CurseForge - so a reader can find it")
+  local bars = 0
+  for _, b in ipairs(S.bars) do if b:IsShown() then bars = bars + 1 end end
+  H.ok(bars >= 15, "barcode stripes on the stub", bars)
+  H.ok(not onCard("Clipper") and not onCard("CLIPPER"), "never 'Clipper' on anything a picture shows")
+  H.ok(not onCard("Dreamscythe") and not onCard("DREAMSCYTHE"), "no realm, even with names on")
+  H.ok(not onCard("Heathens"), "no guild")
+  -- the oval window: the postcard (you, and the boss lying dead) under our own oval art
+  local P = S.post
+  H.ok(P and P.you:IsShown() and P.you._unit == "player", "you, in the oval window")
+  H.ok(P and P.them:IsShown() and P.them._creature == 93654, "the boss beside you (a creature new this session: the first ask draws nothing)")
+  H.ok(S.window and S.window:DoesClipChildren(), "the window's box cuts the models at its edge")
+  H.ok(S.oval and S.oval:GetFrameLevel() > S.window:GetFrameLevel() + 1 and tostring(S.oval.art._texture):find("Media\\oval", 1, true),
+       "our own oval art over the models")
+  H.eq(#snaps, 0, "no picture before the models have drawn")
+  untilShot()
+  H.eq(#snaps, 1, "then ONE picture")
+  local snap = snaps[1] or {}
+  H.ok(snap.card == true and snap.ui == 0, "at the shutter: the card on the screen, the interface faded out (M.Clean)")
+  H.eq(snap.them, NS.J.DEAD, "and the boss lying dead in the window")
+  H.ok(log[1] == e and e.file and e.file:find("^WoWScrnShot_"), "the share card's note: first in the album, its file named")
+  H.ok(e.of == T0 and e.detail == "Mutanus the Devourer" and e.hidden == false, "which memory, its title, names shown")
+  H.ok(e.with == nil and e.withClass == nil, "no party names on the share card's own note")
+  local c = e.crop or {}
+  H.ok(math.abs((c.x or 0) - 0.07) < 0.001 and math.abs((c.w or 0) - 0.86) < 0.001
+       and math.abs((c.y or 0) - 12 / 56.25) < 0.001 and math.abs((c.h or 0) - 32.25 / 56.25) < 0.001,
+       "the ticket's rectangle as fractions of the screen", ("%s %s %s %s"):format(tostring(c.x), tostring(c.y), tostring(c.w), tostring(c.h)))
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  H.ok(not back:IsShown(), "the picture written: the card is put away")
+  H.eq(UIParent:GetAlpha(), 1, "and the interface is back")
+  H.eq(e.shot, true, "the note says the picture saved")
+  settle()
+  H.eq(#snaps, 1, "and only one: what was left waiting does nothing")
+  -- the UI comes back to the PLAYER'S alpha, and comes back even when the client says nothing
+  UIParent:SetAlpha(0.8)
+  S.Take(boss)
+  untilShot()
+  H.eq(#snaps, 2, "a second card, a second picture")
+  H.ok(back:IsShown() and UIParent:GetAlpha() == 0, "up, the interface out")
+  settle()
+  H.ok(not back:IsShown() and math.abs(UIParent:GetAlpha() - 0.8) < 1e-9,
+       "no word from the client: put away anyway, the interface back at the player's own alpha", UIParent:GetAlpha())
+  UIParent:SetAlpha(1)
+  -- a 16:10 screen: the card stays 16:9, the crop follows
+  UIParent._w, UIParent._h = 1920, 1200
+  local e2 = S.Take(boss)
+  local c2 = e2 and e2.crop or {}
+  H.ok(math.abs((c2.y or 0) - (60 + 192 * 1.2) / 1200) < 0.001 and math.abs((c2.h or 0) - 516 * 1.2 / 1200) < 0.001
+       and math.abs((c2.x or 0) - 0.07) < 0.001, "a 16:10 screen: the crop where the ticket really is",
+       ("%s %s"):format(tostring(c2.y), tostring(c2.h)))
+  S.Close()
+  settle()
+  UIParent._w, UIParent._h = 1920, 1080
+
+  H.section("8 Nov: the share card - names hidden (Arn: \"sure keep name hidden\")")
+  d.shareHidden = true
+  local hid = S.Take(boss)
+  H.ok(hid and hid.hidden == true, "a card with names hidden")
+  H.eq(txt(F.val.passenger), "A SHAMAN", "the passenger is the class, no race guessed")
+  H.ok(F.val.passenger._color and math.abs(F.val.passenger._color[3] - 0xd6 / 255) < 0.01, "in the shaman's colour")
+  H.eq(txt(F.crew), "4 friends: rogue, hunter, druid, mage", "the crew: how many, and their classes")
+  H.ok(F.crew._text:find("|cff9a8a00rogue", 1, true), "in class colours", F.crew._text)
+  local leaked = {}
+  for _, t in ipairs(texts()) do
+    local low = t:lower()
+    for _, name in ipairs({ "kumlust", "dreamscythe", "heathens", "acido", "wildhammer", "macready", "bologna", "qazo" }) do
+      if low:find(name, 1, true) then leaked[#leaked + 1] = ("%q"):format(t) end
+    end
+  end
+  H.ok(#texts() > 20 and #leaked == 0, "NO character, party, realm or guild name anywhere on the hidden card ("
+       .. #texts() .. " words checked)", table.concat(leaked, ", "))
+  H.ok(txt(F.cargo):find("Mutant Scale Breastplate", 1, true) and txt(F.title) == "Mutanus the Devourer",
+       "the boss, the place, the time and the loot stay")
+  H.eq(txt(S.post.note), "", "the window's note says nothing (it can say 'played by <name>')")
+  settle()
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  -- someone else's old memory: no "played by" on the card either
+  local alt = { reason = "levelup", detail = "level 10", zone = "Mulgore", level = 10, at = T0 - 7200, char = "Altly-Dreamscythe" }
+  S.Take(alt)
+  H.ok(not onCard("Altly") and not onCard("ALTLY"), "an alt's memory: no name on it either")
+  S.Close()
+  settle()
+  -- solo, no loot: the lines are left out
+  local solo = { reason = "levelup", detail = "level 23", zone = "Thunder Bluff", level = 23, at = T0 + 60, char = me }
+  S.Take(solo)
+  H.ok(not F.crew:IsShown() and not F.crewLab:IsShown() and not F.cargo:IsShown() and not F.cargoLab:IsShown(),
+       "solo and no loot: no CREW, no CARGO line")
+  H.eq(txt(F.title), "Level 23", "a level up's title")
+  H.eq(txt(F.line), "LEVEL UP", "and its line")
+  S.Close()
+  settle()
+
+  H.section("8 Nov: the share card - never in a fight")
+  _G.InCombatLockdown = function() return true end
+  local said0, n0 = #said, #snaps
+  local got, no = S.Take(boss)
+  H.ok(got == nil and no == "in combat", "in a fight: nil, \"in combat\"", tostring(no))
+  H.ok(#said > said0 and said[#said]:lower():find("fight", 1, true), "and a line says why", said[#said])
+  H.ok(not back:IsShown(), "no card covers the screen")
+  _G.InCombatLockdown = nil
+  S.Take(boss)
+  H.ok(back:IsShown() and back._events.PLAYER_REGEN_DISABLED, "up, it listens for a fight")
+  UIParent:SetAlpha(1)
+  fire("PLAYER_REGEN_DISABLED")
+  H.ok(not back:IsShown(), "a fight starts: the card goes at once")
+  settle()
+  H.eq(#snaps, n0, "and no picture is taken after it")
+  H.eq(UIParent:GetAlpha(), 1, "the interface is there for the fight")
+  H.ok(not back._events.PLAYER_REGEN_DISABLED, "shut, it listens for nothing")
+  -- a fight that starts after the shutter, before the client answers: the interface comes back at once
+  S.Take(boss)
+  untilShot()
+  fire("PLAYER_REGEN_DISABLED")
+  H.ok(not back:IsShown() and UIParent:GetAlpha() == 1, "a fight after the shutter: card gone, interface back")
+  settle()
+
+  H.section("8 Nov: the share card - the SHARE keys and /bism share")
+  local f = J.Build()
+  H.ok(f.share and strip(f.share.word._text) == "SHARE", "the journal has a SHARE key")
+  J.sel = boss
+  J.Show()
+  f.share:Click()
+  H.ok(back:IsShown() and S.entry == boss, "SHARE on the journal: the chosen memory's card")
+  H.ok(not J.frame:IsShown(), "the journal steps out of the picture")
+  S.Close() settle()
+  H.ok(J.frame:IsShown(), "and is back after it")
+  J.Hide()
+  L.Show()
+  H.ok(L.call.share and strip(L.call.share.word._text) == "SHARE", "the lounge has a SHARE key")
+  L.Select(boss)
+  L.call.share:Click()
+  H.ok(back:IsShown() and S.entry == boss and not L.back:IsShown(), "SHARE in the lounge: the chosen memory, the lounge put away")
+  S.Close() settle()
+  H.ok(L.back:IsShown(), "and the lounge is back after it")
+  L.Hide()
+  NS.Slash("share")
+  H.ok(back:IsShown() and S.entry == boss, "/bism share: the newest memory (the share cards themselves are not memories)")
+  S.Close() settle()
+  NS.Slash("share 2")
+  H.ok(back:IsShown() and S.entry == before, "/bism share 2: the one before")
+  S.Close() settle()
+  NS.Slash((NS.SHORT.share or "share") .. " 1")
+  H.ok(NS.SHORT.share and #NS.SHORT.share <= 4 and back:IsShown() and S.entry == boss, "/bism " .. tostring(NS.SHORT.share) .. " too")
+  S.Close() settle()
+  NS.Slash("share names on")
+  H.eq(d.shareHidden, false, "/bism share names on: names shown")
+  NS.Slash("share names off")
+  H.eq(d.shareHidden, true, "/bism share names off: hidden again")
+  said0 = #said
+  NS.Slash("share 99")
+  H.ok(not back:IsShown() and #said > said0, "no such memory: says so")
+  local entries = J.Entries()
+  local any = false
+  for _, x in ipairs(entries) do if x.reason == "share" then any = true end end
+  H.ok(not any and #log > #entries, "share cards are kept in the album, not listed as memories in the journal")
+
+  H.section("8 Nov: the share card - BiSMemoriesAPI.ShareCard (version 4)")
+  H.eq(A.version, 4, "BiSMemoriesAPI version 4")
+  local card = { title = "Onyxia", kind = "raid", line = "ALL 40 STANDING · 12:03", place = "Onyxia's Lair",
+                 crew = { { name = "Macready-Firemaw", class = "HUNTER" }, { name = "Qazo", class = "MAGE" } },
+                 cargo = { 17067, "|cffa335ee|Hitem:16914::::::::60:::::|h[Netherwind Crown]|h|r" }, npc = 10184 }
+  d.shareHidden = false
+  local ok1, got1 = A.ShareCard("BiSGuild", card)
+  H.ok(ok1 == true and type(got1) == "table" and got1.reason == "share" and got1.from == "BiSGuild", "true, and the entry",
+       tostring(got1))
+  H.eq(txt(F.title), "Onyxia", "the caller's title")
+  H.eq(txt(F.line), "ALL 40 STANDING · 12:03", "its line")
+  H.eq(txt(F.kind), "RAID", "its kind on the stub")
+  H.ok(txt(F.crew):find("Macready", 1, true) and not txt(F.crew):find("Firemaw", 1, true), "its crew - no realm", txt(F.crew))
+  H.ok(txt(F.cargo):find("Netherwind Crown", 1, true), "its cargo", txt(F.cargo))
+  H.ok(S.post.them._creature == 10184 or S.post.them._display ~= nil, "its creature in the window")
+  H.eq(txt(F.toName), "ONYXIA'S LAIR", "its place")
+  card.title = "changed after"
+  H.eq(txt(F.title), "Onyxia", "the card is copied: changing the caller's table changes nothing")
+  settle()
+  got1.detail = "edited"
+  H.eq(log[1].detail, "Onyxia", "the answer is a copy")
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  d.shareHidden = true
+  A.ShareCard("BiSGuild", { title = "Onyxia", crew = { { name = "Macready", class = "HUNTER" } } })
+  H.ok(not onCard("Macready") and txt(F.crew):find("1 friend: hunter", 1, true), "names hidden: the caller's crew too", txt(F.crew))
+  H.ok(txt(F.val.passenger) == "A SHAMAN", "and the passenger")
+  S.Close() settle()
+  for _, case in ipairs({
+    { { nil, { title = "x" } }, "no owner" },
+    { { "X", nil }, "no title" }, { { "X", "Onyxia" }, "no title" }, { { "X", {} }, "no title" },
+    { { "X", { title = 5 } }, "no title" }, { { "X", { title = "" } }, "no title" },
+    { { "X", setmetatable({}, { __index = function() error("boom") end }) }, "no title" },
+  }) do
+    local okC, a1, a2 = pcall(A.ShareCard, case[1][1], case[1][2])
+    H.ok(okC and a1 == nil and a2 == case[2], "ShareCard refuses: " .. case[2], tostring(a2))
+  end
+  local long = A.ShareCard and select(2, A.ShareCard("X", { title = ("W"):rep(500), kind = ("k"):rep(99), line = ("L"):rep(300),
+    place = ("P"):rep(300), crew = { 7, { name = 9 }, { name = ("N"):rep(300), class = "lower" } }, cargo = { -1, 2.5, "nope", {} },
+    npc = "11502", display = -3 }))
+  H.ok(long and #long.detail <= 60, "a title is cut to 60", long and #long.detail)
+  H.ok(#txt(F.kind) <= 16 and #txt(F.line) <= 40 + 3, "the kind and the line cut short", txt(F.kind))
+  H.ok(not F.cargo:IsShown(), "no cargo out of nonsense")
+  H.ok(not S.post.them:IsShown(), "and no creature out of a string or a negative number")
+  S.Close() settle()
+  _G.InCombatLockdown = function() return true end
+  local okF, whyF = A.ShareCard("X", { title = "Onyxia" })
+  _G.InCombatLockdown = nil
+  H.ok(okF == nil and whyF == "in combat", "in a fight: nil, \"in combat\"", tostring(whyF))
+  d.gap = 8
+  S.Take(boss)
+  S.Close() settle()
+  local okG, whyG = A.ShareCard("X", { title = "Onyxia" })
+  H.ok(okG == nil and whyG == "too soon", "inside the gap between pictures: nil, \"too soon\"", tostring(whyG))
+  now = now + 30
+  d.gap = 0
+  local okM, gotM = A.ShareMemory("X", 1)
+  H.ok(okM == true and gotM and gotM.of == boss.at, "ShareMemory: an existing memory's card (1 = the newest)")
+  S.Close() settle()
+  local okN, whyN = A.ShareMemory("X", 999)
+  H.ok(okN == nil and whyN == "no such memory", "ShareMemory: one that is not there", tostring(whyN))
+  okN, whyN = A.ShareMemory(nil, 1)
+  H.ok(okN == nil and whyN == "no owner", "ShareMemory: no owner", tostring(whyN))
+  local hdr = bytes(ROOT .. "/API.lua") or ""
+  H.ok(hdr:find("ShareCard(owner, card)", 1, true) and hdr:find("ShareMemory(owner, index)", 1, true)
+       and hdr:find("since version 4", 1, true), "the header documents both")
+
+  H.section("8 Nov: the share card - the loot that dropped, kept on a boss's memory")
+  wipe()
+  local keepInfo = _G.GetItemInfo
+  _G.GetItemInfo = function(x) if x == 17067 or tostring(x):find("17067") then return "Ancient Cornerstone Grimoire", nil, 4 end end
+  local kill = M.BossKill("Lady Sharecondra", 585, "Creature-0-1-2-3-4-3671-0000")
+  H.ok(kill and kill.reason == "boss", "a boss's first kill")
+  M.OnEvent("CHAT_MSG_LOOT", "Macready receives loot: |cff0070dd|Hitem:6446::::::::22:::::|h[Snakeskin Bag]|h|r.")
+  M.OnEvent("CHAT_MSG_LOOT", "You receive loot: |cff1eff00|Hitem:5404::::::::22:::::|h[Serpent's Shoulders]|h|r.")
+  M.OnEvent("CHAT_MSG_LOOT", "Macready receives loot: |cff0070dd|Hitem:6446::::::::22:::::|h[Snakeskin Bag]|h|r.")
+  M.OnEvent("CHAT_MSG_LOOT", "Macready has selected Greed for: [Snakeskin Bag]")
+  local cg = kill and kill.cargo or {}
+  H.eq(#cg, 2, "every item seen in the next minute, each once (anyone's - what dropped)")
+  H.ok(tostring(cg[1]):find("Snakeskin Bag", 1, true) and tostring(cg[2]):find("Serpent", 1, true), "as their links")
+  local keepNum, keepSlot = _G.GetNumLootItems, _G.GetLootSlotLink
+  _G.GetNumLootItems = function() return 3 end
+  _G.GetLootSlotLink = function(i)
+    return ({ "|cffa335ee|Hitem:17067::::::::60:::::|h[Ancient Cornerstone Grimoire]|h|r", nil,
+              "|cff0070dd|Hitem:6446::::::::22:::::|h[Snakeskin Bag]|h|r" })[i]
+  end
+  M.OnEvent("LOOT_OPENED")
+  H.eq(#cg, 3, "and what the loot window shows")
+  run()                          -- the minute is up (its timer)
+  M.OnEvent("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:4306::::::::22:::::|h[Silk Cloth]|h|r.")
+  M.OnEvent("LOOT_OPENED")
+  H.eq(#cg, 3, "after a minute: nothing more")
+  -- a hidden line is never read; a secret link from the loot window neither
+  local secret = setmetatable({}, {})
+  local keepSecret = _G.issecretvalue
+  _G.issecretvalue = function(v) return rawequal(v, secret) end
+  M.fights[999] = now - 30
+  local kill2 = M.BossKill("Lord Sharebrahn", 999, nil)
+  M.OnEvent("CHAT_MSG_LOOT", secret)
+  _G.GetLootSlotLink = function() return secret end
+  local okL = pcall(M.OnEvent, "LOOT_OPENED")
+  _G.GetLootSlotLink = function() error("the loot window closed") end
+  local okE = pcall(M.OnEvent, "LOOT_OPENED")
+  _G.issecretvalue = keepSecret
+  H.ok(okL and okE and kill2 and kill2.cargo == nil, "a hidden line, a hidden link, an error: nothing kept, nothing thrown")
+  _G.GetNumLootItems, _G.GetLootSlotLink = keepNum, keepSlot
+  -- the card names an item by its id too
+  local byId = { reason = "boss", detail = "first kill: Onyxia", zone = "Onyxia's Lair", level = 60, at = T0, char = me,
+                 cargo = { 17067 } }
+  S.Take(byId)
+  H.ok(txt(F.cargo):find("Ancient Cornerstone Grimoire", 1, true) and F.cargo._text:find("|cff7b2fbf", 1, true),
+       "an item id: its name from the client, an epic in purple", F.cargo._text)
+  S.Close() settle()
+  _G.GetItemInfo = keepInfo
+
+  H.section("8 Nov: the share card - fits, pops, any screen")
+  log[1], log[2] = boss, before
+  for _, sz in ipairs({ { 1024, 768 }, { 1920, 1080 }, { 3440, 1440 } }) do
+    UIParent._w, UIParent._h = sz[1], sz[2]
+    d.shareHidden = false
+    S.Take(boss)
+    local k = S.room:GetScale()
+    H.ok(math.abs(S.W * k - math.min(sz[1], sz[2] * 16 / 9)) < 0.5, ("%dx%d: the card's room as big as 16:9 fits"):format(sz[1], sz[2]))
+    local small, n = {}, 0
+    for _, fs in ipairs(H.labels) do
+      if fs._shown ~= false and fs._text ~= "" and insideShown(fs, S.back) then
+        n = n + 1
+        if (fs._size or 0) * k < L.MIN_FONT - 0.01 then small[#small + 1] = ("%q %.1f"):format(strip(fs._text), fs._size * k) end
+      end
+    end
+    H.ok(n > 20 and #small == 0, ("%dx%d: no word smaller than %d on the screen"):format(sz[1], sz[2], L.MIN_FONT), table.concat(small, ", "))
+    fitsIn(S.ticket, ("the share card at %dx%d"):format(sz[1], sz[2]))
+    S.Close() settle()
+  end
+  UIParent._w, UIParent._h = 1920, 1080
+  local long2 = { reason = "boss", detail = "first kill: " .. ("Archbishop Benedictus the Long-Named "):rep(3), zone = "Wailing Caverns",
+    level = 22, at = T0, char = me, with = { "Aaaaaaaaaaaa", "Bbbbbbbbbbbbbb", "Cccccccccccccc", "Dddddddddddddd" },
+    withClass = { "ROGUE", "MAGE", "DRUID", "PRIEST" }, cargo = {} }
+  for i = 1, 8 do long2.cargo[i] = ("|cffa335ee|Hitem:%d::::::::60:::::|h[A Very Long Epic Item Name Number %d]|h|r"):format(19000 + i, i) end
+  S.Take(long2)
+  fitsIn(S.ticket, "the share card with a long title, crew and cargo")
+  H.ok((F.title._size or 99) < S.FontPx(3.6) + 0.01, "a long title is drawn smaller to fit")
+  S.Close() settle()
+  local function pops(b, what)
+    local enter = b and b:GetScript("OnEnter")
+    H.ok(enter ~= nil, what .. ": answers the mouse")
+    if not enter then return end
+    b:Fire("OnEnter")
+    H.ok(b.wash and b.wash:GetAlpha() >= 0.2 and b.bar and b.bar:GetAlpha() == 1, what .. ": pops under the mouse")
+    b:Fire("OnLeave")
+    H.ok(b.wash:GetAlpha() == 0 and b.bar:GetAlpha() == 0, what .. ": and dark again")
+  end
+  J.sel = boss
+  pops(f.share, "the journal's SHARE key")
+  L.Show()
+  pops(L.call.share, "the lounge's SHARE key")
+  L.Hide()
+  local ow = NS.CFG.Build()
+  local shareRow
+  for _, r in ipairs(ow.rows or {}) do if r.opt and r.opt.key == "sharecard" then shareRow = r end end
+  H.ok(shareRow ~= nil, "the options window has a share card button")
+
+  H.section("8 Nov: the share card - lean, and nothing runs while it is put away")
+  local nT, byT = Cost.Count(function() S.Take(boss) end)
+  H.say(("   cost: putting a share card up = %d client calls"):format(nT))
+  -- budget (8 Nov 2026): measured on a boss card with crew and cargo - the time, the date, the level, the postcard's
+  -- player and creature, the screen's size; once per card, by hand
+  H.ok(nT <= S.BUDGET, "a card asks the client at most " .. S.BUDGET .. " things (measured " .. nT .. ")", Cost.Top(byT, 6))
+  local nW, byW = Cost.Count(function() settle() end)
+  H.say(("   cost: the wait and the shutter = %d client calls"):format(nW))
+  -- budget (8 Nov 2026): measured 4 - the time and the date for the note, the file stamp; once per card
+  H.ok(nW <= 8, "the wait and the shutter ask at most 8 (measured " .. nW .. ")", Cost.Top(byW, 6))
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  local ticking = {}
+  for _, fr in ipairs(H.frames) do
+    local p, mine = fr, false
+    while p do if p == S.back then mine = true break end p = p._parent end
+    if mine and fr:GetScript("OnUpdate") then ticking[#ticking + 1] = tostring(fr._type) end
+  end
+  H.ok(#ticking == 0, "nothing of the card has an OnUpdate", table.concat(ticking, ", "))
+  S.Take(boss)
+  S.Close()
+  local n1 = #snaps
+  local nH = Cost.Count(function() settle() end)
+  H.ok(#snaps == n1 and nH <= 6, "put away before its picture: its timers do nothing (" .. nH .. " calls)")
+  -- a raid's loot storm in the minute after a kill: string work only
+  wipe()
+  M.fights[777] = now - 60
+  M.BossKill("Majordomo Sharestadt", 777, nil)
+  local nL, byL = Cost.Count(function()
+    for i = 1, 200 do
+      M.OnEvent("CHAT_MSG_LOOT", ("Raider%d receives loot: |cffa335ee|Hitem:%d::::::::60:::::|h[Thing %d]|h|r."):format(i, 17000 + i % 30, i))
+    end
+  end)
+  -- budget (8 Nov 2026): 200 loot lines in a boss's minute; the camera's own "is it worthy" asks one item question a
+  -- line (0.9.0's lean section) - the cargo itself asks the client nothing
+  H.say(("   cost: 200 loot lines in a boss's minute = %d client calls"):format(nL))
+  H.ok(nL <= 210, "200 loot lines after a kill ask the client at most 210 things (measured " .. nL .. ")", Cost.Top(byL, 5))
+  H.ok(#(log[1].cargo or {}) == M.CARGO_MAX, "and the cargo stops at " .. tostring(M.CARGO_MAX) .. " items", #(log[1].cargo or {}))
+
+  H.section("8 Nov: the share card - the album page cuts the ticket out")
+  local page = bytes(ROOT .. "/Album/BiSMemories-Album.html") or ""
+  H.ok(page:find("Save it and post it anywhere.", 1, true), "Save it and post it anywhere.")
+  H.ok(page:find("SAVE IMAGE", 1, true) and page:find("toDataURL", 1, true) and page:find(".download =", 1, true),
+       "a SAVE IMAGE button: the canvas into a link that downloads")
+  H.ok(page:find("BiS-Memories-", 1, true), "the file named BiS-Memories-<what>-<date>.png")
+  H.ok(page:find("ClipboardItem", 1, true) and page:find("navigator.clipboard.write", 1, true), "a COPY button where the browser allows it")
+  H.ok(page:find('["crop"]', 1, true) or page:find('\\["crop"\\]', 1, true), "it reads the card's crop from the notes")
+  H.ok(page:find("function cropOf(", 1, true) and page:find("drawImage", 1, true), "and cuts the picture down with a canvas")
+  H.ok(page:find('share: "Share card"', 1, true), "a share card in plain words")
+  H.ok(not page:find('src="http', 1, true) and not page:find("fetch(", 1, true), "still nothing from the internet")
+  H.ok(page:find('rel("Screenshots/"', 1, true), "pictures still loaded from beside the page, by relative path")
+
+  wipe()
+  if S.back then S.Close() end
+  settle()
+  d.gap, d.shareHidden = 0, true
+  J.sel = nil
+  J.Hide()
+  _G.C_Timer, _G.Screenshot, _G.UnitClass, _G.UnitRace, _G.GetTime = keepTimer, keepShot, keepClass, keepRace, keepTime
+  UIParent._w, UIParent._h = keepW, keepH
 end)()
 
 H.report()

@@ -131,6 +131,18 @@
   .small summary { cursor: pointer; }
   .pathrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .pathrow code { white-space: nowrap; padding: 7px 10px !important; font-size: 14px; }
+  /* A SHARE CARD (8 Nov 2026, Core/Share.lua): the picture is the whole screen with the boarding pass alone on it;
+     here it is cut down to just the ticket, ready to save and post */
+  figure.share { cursor: default; border-color: #3a6a70; }
+  figure.share .cutbox { background: #1f4f57; padding: 10px; display: block; cursor: zoom-in; }
+  figure.share canvas.cut { width: 100%; height: auto; display: block; border-radius: 4px; background: #ece2c9; }
+  .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .sbtn { font: inherit; font-size: 12px; font-weight: 700; letter-spacing: .08em; cursor: pointer; border-radius: 999px;
+          padding: 6px 12px; border: 1px solid #2f6fd0; background: #2f6fd0; color: #fff; }
+  .sbtn.alt { background: #241f30; border-color: #4a4458; color: var(--ink); }
+  /* it pops under the mouse, as everything clickable in the family does */
+  .sbtn:hover { filter: brightness(1.18); box-shadow: inset 3px 0 0 var(--accent); }
+  .post { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
   /* the whole page is a drop target, because the button is unavoidable and dragging is kinder */
   body.dropping::after { content: "Drop it - the page finds your pictures and notes"; position: fixed; inset: 0;
                          display: flex; align-items: center; justify-content: center;
@@ -229,7 +241,7 @@ var who = "";        // one character's memories ("" = everyone's), from the pic
 // THE KINDS IN PLAIN WORDS - the same words as the game's journal (Core/Memories.lua M.WORDS)
 var WORDS = { levelup: "Level up", boss: "Boss", loot: "Loot", achievement: "Achievement", death: "Death",
               duel: "Duel", zone: "New place", exalted: "Exalted", candid: "Candid", first: "First",
-              gamba: "Gamba", group: "Group photo", manual: "By hand" };
+              gamba: "Gamba", group: "Group photo", manual: "By hand", share: "Share card" };
 function word(r) { return WORDS[r] || r || ""; }
 
 // WoWScrnShot_091926_165152.jpg -> 19 Sep 2026, 16:51:52. The client names them MMDDYY_HHMMSS,
@@ -332,6 +344,22 @@ function withOf(block) {
   return out;
 }
 
+// THE SHARE CARD'S TICKET (8 Nov 2026, Core/Share.lua): ["crop"] = { ["x"] = 0.07, ["y"] = 0.2133, ["w"] = 0.86,
+// ["h"] = 0.5733 } - where the ticket is on the picture, as fractions of the screen. Read both ways the game writes it:
+// the account's file (["x"] = 0.07,) and the one-line copy (["x"]=0.070000000000000007,). Anything odd: no crop.
+function cropOf(block) {
+  var m = /\["crop"\]\s*=\s*\{([^}]*)\}/.exec(block);
+  if (!m) return null;
+  var out = {}, keys = ["x", "y", "w", "h"], i, k;
+  for (i = 0; i < keys.length; i++) {
+    k = new RegExp('\\["' + keys[i] + '"\\]\\s*=\\s*(-?[0-9.]+(?:[eE][-+]?[0-9]+)?)').exec(m[1]);
+    if (!k) return null;
+    out[keys[i]] = parseFloat(k[1]);
+  }
+  if (!(out.w > 0 && out.h > 0 && out.x >= 0 && out.y >= 0 && out.x + out.w <= 1.001 && out.y + out.h <= 1.001)) return null;
+  return out;
+}
+
 function readNotes(text) {
   var out = {}, get, re, m, block;
   get = function (b, key) {
@@ -347,7 +375,8 @@ function readNotes(text) {
     out[m[1].replace(/\.[a-z]+$/i, "")] = {
       zone: get(block, "zone"), detail: get(block, "detail"),
       reason: get(block, "reason"), level: get(block, "level"), char: get(block, "char"),
-      with: withOf(block)
+      with: withOf(block), crop: cropOf(block),
+      hidden: /\["hidden"\]\s*=\s*true/.test(block)
     };
   }
   return out;
@@ -475,6 +504,7 @@ function render() {
     var grid = document.createElement("div");
     grid.className = "grid";
     sess.shots.forEach(function (s) {
+      if (s.note && s.note.reason === "share" && s.note.crop) { grid.appendChild(shareFigure(s)); return; }
       var fig = document.createElement("figure");
       fig.onclick = function () { open(view.indexOf(s)); };
 
@@ -499,6 +529,118 @@ function render() {
     });
     album.appendChild(grid);
   });
+}
+
+/* A SHARE CARD, CUT DOWN TO ITS TICKET (8 Nov 2026 - Arn: "save to a file on their computer of only the ticket stub
+   thing ... they go on twitter and they can upload their dungeon clear"). The game can only take whole-screen pictures,
+   so the card was drawn alone at a known place (the note's crop) and this page does the cutting, with a canvas.
+   SAVE IMAGE: the canvas into a link that downloads (BiS-Memories-<what>-<date>.png). COPY: the picture onto the
+   clipboard where the browser allows it (ClipboardItem), else the button is not shown.
+   THE BROWSER'S RULE: a picture this page opened by itself (from beside it, by relative path - the album without a
+   drag) can be SHOWN on a canvas but not handed over - toDataURL refuses it. Picked by hand it can be: one click opens a
+   file box for that one picture, and from then on the card saves. Nothing leaves the computer either way. */
+var CAN_COPY = !!(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write);
+function pad2(n) { return String(n).padStart(2, "0"); }
+function cardName(s) {
+  var what = String((s.note && s.note.detail) || "card").replace(/\|c[0-9a-fA-F]{8}/g, "").replace(/\|r/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "card";
+  var d = s.at || new Date();
+  return "BiS-Memories-" + what + "-" + d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) + ".png";
+}
+// the ticket out of the picture at `url`, into the canvas; then(cv) once drawn. A picture that will not load: no card.
+function cutInto(url, crop, cv, then, failed) {
+  var img = new Image();
+  img.onload = function () {
+    var w = img.naturalWidth, h = img.naturalHeight;
+    var sx = Math.round(crop.x * w), sy = Math.round(crop.y * h);
+    var sw = Math.min(w - sx, Math.round(crop.w * w)), sh = Math.min(h - sy, Math.round(crop.h * h));
+    cv.width = sw; cv.height = sh;
+    cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    if (then) then(cv);
+  };
+  img.onerror = function () { if (failed) failed(); };
+  img.src = url;
+}
+function handedOver(cv) {
+  try { cv.getContext("2d").getImageData(0, 0, 1, 1); return true; } catch (err) { return false; }
+}
+function saveCard(s, cv) {
+  if (!handedOver(cv)) return pickCard(s, cv, "save");
+  var a = document.createElement("a");
+  a.href = cv.toDataURL("image/png");
+  a.download = cardName(s);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  busy('<span class="ok">&#10003;</span> saved <b>' + esc(cardName(s)) + "</b> to your Downloads folder &mdash; post it anywhere");
+  document.getElementById("track").className = "track done";
+}
+function copyCard(s, cv) {
+  if (!handedOver(cv)) return pickCard(s, cv, "copy");
+  var blob = new Promise(function (ok, no) { cv.toBlob(function (b) { if (b) ok(b); else no(); }, "image/png"); });
+  navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(function () {
+    busy('<span class="ok">&#10003;</span> the card is on your clipboard &mdash; paste it into a post');
+    document.getElementById("track").className = "track done";
+  }, function () {
+    busy('<span class="no">&#10007;</span> this browser would not copy a picture &mdash; use <b>SAVE IMAGE</b>');
+    document.getElementById("track").className = "track done";
+  });
+}
+function pickCard(s, cv, then) {
+  var inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = "image/*";
+  inp.onchange = function () {
+    var f = inp.files && inp.files[0];
+    if (!f) return;
+    s.cutUrl = URL.createObjectURL(f);
+    cutInto(s.cutUrl, s.note.crop, cv, function () {
+      if (then === "save") saveCard(s, cv);
+      else { busy("picked &mdash; press <b>COPY</b> again"); document.getElementById("track").className = "track done"; }
+    });
+  };
+  busy("your browser lets this page show that picture but not hand it over &mdash; pick it once: <b>" + esc(s.name) +
+       "</b> in your Screenshots folder");
+  document.getElementById("track").className = "track done";
+  inp.click();
+}
+function shareFigure(s) {
+  var fig = document.createElement("figure");
+  fig.className = "share";
+  var cutbox = document.createElement("span");
+  cutbox.className = "cutbox";
+  cutbox.onclick = function () { open(view.indexOf(s)); };
+  var cv = document.createElement("canvas");
+  cv.className = "cut";
+  cutbox.appendChild(cv);
+  fig.appendChild(cutbox);
+  cutInto(s.cutUrl || s.url, s.note.crop, cv, null, function () { if (!s.file) fig.remove(); });
+  var cap = document.createElement("figcaption");
+  cap.innerHTML = '<span class="reason">' + esc(word("share")) + '</span> <span class="detail">' + pretty(s.note.detail || "") +
+    '</span><span class="where">' + esc(s.note.zone || "") + (s.note.hidden ? " &middot; names hidden" : "") + "</span>";
+  var acts = document.createElement("span");
+  acts.className = "acts";
+  var save = document.createElement("button");
+  save.className = "sbtn";
+  save.type = "button";
+  save.textContent = "SAVE IMAGE";
+  save.onclick = function (e) { e.stopPropagation(); saveCard(s, cv); };
+  acts.appendChild(save);
+  if (CAN_COPY) {
+    var copy = document.createElement("button");
+    copy.className = "sbtn alt";
+    copy.type = "button";
+    copy.textContent = "COPY";
+    copy.onclick = function (e) { e.stopPropagation(); copyCard(s, cv); };
+    acts.appendChild(copy);
+  }
+  cap.appendChild(acts);
+  var post = document.createElement("span");
+  post.className = "post";
+  post.textContent = "Save it and post it anywhere.";
+  cap.appendChild(post);
+  fig.appendChild(cap);
+  return fig;
 }
 
 // AN ITEM LINK IS NOT TEXT. The addon writes down exactly what the client handed it, which for
