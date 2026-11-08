@@ -243,6 +243,13 @@ local function newFrame(ftype, name, parent)
         self._level = n
     end
     function fr:GetFrameLevel() return self._level or 0 end
+    -- kept (8 Nov 2026): "the lounge lies over everything" was untestable while these answered silence; the client's
+    -- frames start at MEDIUM
+    function fr:SetFrameStrata(s)
+        if type(s) ~= "string" then error("SetFrameStrata needs a strata name", 0) end
+        self._strata = s
+    end
+    function fr:GetFrameStrata() return self._strata or "MEDIUM" end
     function fr:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
     function fr:GetNumPoints() return 1 end
     -- SHOWING AND HIDING RUN OnShow / OnHide, AS THE CLIENT DOES (8 Nov 2026, the Clipper Lounge). Escape hides a

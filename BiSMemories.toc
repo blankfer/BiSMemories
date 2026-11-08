@@ -28,6 +28,7 @@ Core\Moments.lua
 API.lua
 Core\Map.lua
 Core\Journal.lua
+Core\Lounge.lua
 Core\Pins.lua
 UI\Options.lua
 Core\Slash.lua
