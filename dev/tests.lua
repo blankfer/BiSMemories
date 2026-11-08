@@ -89,7 +89,7 @@ H.eq(NS.VERSION, TOC_VERSION, "version is the TOC's")
 -- THE API BEFORE LOGIN: the files are loaded, the saved notes are not. Every call answers, none throws.
 do
   local A = _G.BiSMemoriesAPI
-  H.ok(type(A) == "table" and A.major == 1 and A.version == 2, "BiSMemoriesAPI is there, major 1, version 2")
+  H.ok(type(A) == "table" and A.major == 1 and A.version == 3, "BiSMemoriesAPI is there, major 1, version 3")
   for _, call in ipairs({
     { "Ready", {} }, { "Memories", {} }, { "Latest", {} }, { "Kinds", {} }, { "TakeMemory", { "too early" } },
   }) do
@@ -754,29 +754,29 @@ do
   -- window people see most often is this one, and it has to say why rather than look broken.
   J.Show()
   H.ok(J.frame:IsShown(), "it opens")
-  H.ok(strip(J.frame.kind._text):find("nothing yet"), "and an empty log says so in words")
-  H.eq(J.frame.rows[1]._text, "", "with no stale row left behind")
+  H.ok(strip(J.frame.kind._text):find("NOTHING YET"), "and an empty log says so in words")
+  H.ok(not J.frame.hits[1]:IsShown(), "with no stale line left behind")
 
-  -- forty memories, newest first (more than the 0.9.0 window's rows)
+  -- forty memories, newest first (more than a page)
   for i = 1, 40 do
     table.insert(log, 1, { at = 1000 + i, reason = "zone", detail = "place " .. i,
                            zone = "Mulgore", with = {}, file = "WoWScrnShot_" .. i })
   end
   J.Refresh()
-  -- ROW 1 IS THE NIGHT'S HEADING NOW, and the memories hang under it. These twenty were written
-  -- a second apart, so they are all one "night" - which is the rule doing exactly what it says.
+  -- LINE 1 IS THE NIGHT'S HEADING, and the memories hang under it. These were written a second
+  -- apart, so they are all one "night" - which is the rule doing exactly what it says.
   H.ok(strip(J.frame.rows[1]._text):find("Mulgore"), "the night's heading is at the top",
        strip(J.frame.rows[1]._text))
   H.ok(strip(J.frame.rows[2]._text):find("place 40"), "the newest memory is under it")
   H.ok(strip(J.frame.rows[3]._text):find("place 39"), "and the one before it under that")
   H.ok(strip(J.frame.count._text):find("40 kept"), "the footer counts the memories, not the lines")
 
-  -- the wheel walks it, and stops at the ends rather than running off
-  H.eq(J.Scroll(3), 3, "the wheel moves down the list")
-  H.ok(strip(J.frame.rows[1]._text):find("place 38"), "and the page follows",
-       strip(J.frame.rows[1]._text))
-  H.eq(J.Scroll(-99), 0, "it will not go above the newest")
-  H.eq(J.Scroll(99), 41 - J.ROWS, "nor past the oldest - 40 memories plus a heading, a page of rows")
+  -- the wheel turns the pages, and stops at the ends rather than running off
+  H.eq(J.Scroll(1), 2, "the wheel turns to the next page")
+  H.ok(strip(J.frame.rows[2]._text):find("place 34"), "and the page follows",
+       strip(J.frame.rows[2]._text))
+  H.eq(J.Scroll(-99), 1, "it will not go before the newest")
+  H.eq(J.Scroll(99), 7, "nor past the oldest - 40 memories, six a page")
 
   -- A MEMORY LANDING WHILE IT IS OPEN pulls it forward. Through M.Shoot, the path the game
   -- actually takes - calling J.Touch() by hand here proved only that Touch works, and passed
@@ -1036,13 +1036,17 @@ H.section("the window has room for what is in it")
 do
   local J = NS.J
   local f = J.Build()
-  -- 0.9.0's window: the rows from J.LIST_TOP, J.ROWS of J.ROW_H, and the foot's label and box below
-  local rowsEnd = J.LIST_TOP + J.ROWS * J.ROW_H
-  H.ok(f:GetHeight() - rowsEnd >= J.FOOT - 6, "the rows stop above the copy box rather than behind it",
-       rowsEnd .. " of " .. f:GetHeight())
+  -- the cockpit (8 Nov 2026): the displays end above the soft keys, the soft keys above the memo line (the copy box)
+  local dispEnd = J.DISP_TOP + J.DISP_H
+  H.ok(dispEnd + 8 + J.KEY_H <= J.MEMO_Y and J.MEMO_Y + 24 <= f:GetHeight(),
+       "the displays stop above their keys, the keys above the copy box rather than behind it",
+       dispEnd .. " / " .. J.MEMO_Y .. " of " .. f:GetHeight())
+  -- six lines a page, and a heading over each in the worst case, inside the list
+  H.ok(J.PER * (J.ENTRY_H + J.HEAD_H) <= J.DISP_H - J.LIST_TOP - 4, "six lines and six headings fit the left display")
   H.ok(math.abs(f:GetWidth() / f:GetHeight() - 1.43) < 0.01, "the BiS window shape, 1.43:1",
        f:GetWidth() .. "x" .. f:GetHeight())
-  H.ok(J.DETAIL_X + J.DETAIL_W <= f:GetWidth() - 8 and J.LIST_W + 8 < J.DETAIL_X, "the list and the detail side by side, inside it")
+  H.ok(J.DISP_X2 + J.DISP_W <= f:GetWidth() - 8 and J.DISP_X + J.DISP_W + 8 < J.DISP_X2,
+       "the list and the detail side by side, inside it")
 end
 
 H.section("where the album page is")
@@ -1260,11 +1264,12 @@ do
   GameTooltip.SetText = function(_, t) tip[#tip + 1] = strip(t) end
   GameTooltip.AddLine = function(_, t) tip[#tip + 1] = strip(t) end
   local row
-  for i = 1, #J.frame.rows do
-    if strip(J.frame.rows[i]._text):find("  Death  ", 1, true) then row = i end
+  for i = 1, #J.frame.subs do
+    if J.frame.hits[i]:IsShown() and strip(J.frame.subs[i]._text):find("DEATH", 1, true) then row = i end
   end
   H.ok(row ~= nil, "the death row is on the page")
-  H.ok(not strip(J.frame.rows[row or 1]._text):find("with 4", 1, true), "the row no longer carries the count")
+  H.ok(not (strip(J.frame.rows[row or 1]._text) .. strip(J.frame.subs[row or 1]._text)):find("with 4", 1, true),
+       "the row no longer carries the count")
   J.frame.hits[row or 1]:Fire("OnEnter")
   local said = table.concat(tip, " | ")
   H.ok(said:find(zone, 1, true) and said:find("with 4", 1, true), "hovering it says where and who with", said)
@@ -1644,14 +1649,16 @@ end
   H.eq(#J.Entries(), 1, "this character's memories by default")
   J.frame.who:Click()
   H.eq(#J.Entries(), 2, "the header's button: every character's")
-  H.ok(strip(J.frame.rows[2]._text):find("Level up  level 20", 1, true), "rows in plain words", strip(J.frame.rows[2]._text))
+  H.ok(J.frame.rows[2]._text == "level 20" and strip(J.frame.subs[2]._text):find("LEVEL UP", 1, true), "rows in plain words",
+       strip(J.frame.subs[2]._text) .. " / " .. strip(J.frame.rows[2]._text))
   local hitMine
   for i, hit in ipairs(J.frame.hits) do if hit.entry == mine then hitMine = hit end end
   hitMine:Click()
+  run() run()                                          -- the boss: asked, asked again, looked at (the client's rule)
   local f = J.frame
-  H.ok(J.sel == mine and strip(f.kind._text):find("^Boss") and f.text._text == "first kill: Ragnaros", "click a row: the detail")
-  H.ok(strip(f.whoWith._text) == "with" and f.withBtns[1]:IsShown() and f.withBtns[1].who == "Kumlance Wildhammer"
-       and f.withBtns[2].who == "Neg Crotic" and strip(f.more._text):find("the fight took 4:10", 1, true),
+  H.ok(J.sel == mine and strip(f.kind._text):find("^BOSS") and f.text._text == "first kill: Ragnaros", "click a row: the detail")
+  H.ok(strip(f.whoWith._text) == "WITH" and f.whoWith:IsShown() and f.withBtns[1]:IsShown() and f.withBtns[1].who == "Kumlance Wildhammer"
+       and f.withBtns[2].who == "Neg Crotic" and strip(f.data.took.val._text) == "4:10",
        "who was there - a name each - and the fight's time")
   -- a year on: click a name, the game's own player menu (whisper, invite, friend, BiS Tools' pal line)
   local menu
@@ -1664,7 +1671,7 @@ end
   local you, them = f.post.you, f.post.them
   H.ok(you._unit == "player" and you._undressed and #you._tried == 2 and you._anim == J.POSE.boss,
        "THE POSTCARD: you, in what you wore, in the moment's pose", tostring(you._anim))
-  H.ok(them:IsShown() and them._creature == 11502 and them._anim == 1, "beside the boss, where it fell")
+  H.ok(them:IsShown() and them._creature == 11502 and them._anim == J.DEAD, "beside the boss, lying where it fell")
   fitsIn(f, "the journal, a memory open")
   for i, hit in ipairs(J.frame.hits) do if hit.entry == theirs then hit:Click() end end
   H.ok(not you:IsShown() and strip(f.post.note._text) == "played by Altie" and not them:IsShown(),
@@ -1919,9 +1926,10 @@ end)()
   H.ok(near(other.word._color, "ink"), "a tab's word goes bright under the mouse")
   other:Fire("OnLeave")
   H.ok(near(other.word._color, "ink2"), "and back to its resting colour")
-  H.ok(near(f.tabs[1].word._color, "accent"), "the chosen tab is the accent")
+  -- the cockpit (8 Nov): the chosen key's word is bright and its green bar lit - and a hover gives both back
+  H.ok(near(f.tabs[1].word._color, "ink") and f.tabs[1].lit:GetAlpha() == 1, "the chosen key is bright, its bar lit")
   f.tabs[1]:Fire("OnEnter") f.tabs[1]:Fire("OnLeave")
-  H.ok(near(f.tabs[1].word._color, "accent"), "and stays the accent after a hover")
+  H.ok(near(f.tabs[1].word._color, "ink") and f.tabs[1].lit:GetAlpha() == 1, "and stays so after a hover")
   local hit, row
   for i, h in ipairs(f.hits) do if h.entry == e then hit, row = h, i end end
   pops(hit, "a memory's row", true)
@@ -1929,7 +1937,10 @@ end)()
     hit:Fire("OnEnter")
     H.ok(near(f.rows[row]._color, "ink"), "the row's words go bright under the mouse")
     hit:Fire("OnLeave")
-    H.ok(near(f.rows[row]._color, "ink2"), "and rest a little dimmer")
+    local mr, mg, mb = J.Glass("magenta")
+    local c = f.rows[row]._color
+    H.ok(c and math.abs(c[1] - mr) < 0.01 and math.abs(c[2] - mg) < 0.01 and math.abs(c[3] - mb) < 0.01,
+         "and rest in their own colour (the chosen line's magenta)")
   end
   local headHit = f.hits[1].entry == nil and f.hits[1] or nil
   if headHit then
@@ -1940,15 +1951,16 @@ end)()
   pops(f.withBtns[1], "a name under 'with'")
   pops(J.Toast(e, "A year ago today"), "the on-this-day card")
   J.toast:Hide()
-  -- the map's dots and the world map's pins: a modest light - the edge goes to the accent, the map is not washed
+  -- the map's pins and the world map's pins: a modest light - the outline goes to the accent, the map is not washed
   J.Tab("map")
   local dot = f.map.dots and f.map.dots[1]
-  H.ok(dot ~= nil, "the map has a dot to hover")
+  H.ok(dot ~= nil and dot:IsShown(), "the map has a pin to hover")
   if dot then
+    local was = dot.sides[1]._color
     dot:Fire("OnEnter")
-    H.ok(near(dot.edge._color, "accent"), "a map dot's edge lights under the mouse")
+    H.ok(near(dot.sides[1]._color, "accent") and near(dot.sides[4]._color, "accent"), "a map pin's outline lights under the mouse")
     dot:Fire("OnLeave")
-    H.ok(dot.edge._color and dot.edge._color[1] == 0 and dot.edge._color[2] == 0, "and goes back to black")
+    H.ok(dot.sides[1]._color[1] == was[1] and dot.sides[1]._color[2] == was[2], "and goes back to its colour")
   end
   J.Tab("memories")
   d.pins = "mine"
@@ -2349,6 +2361,482 @@ end)()
   _G.UnitPopup_OpenMenu, _G.FriendsFrame_ShowDropdown = nil, nil
 
   _G.BiSMemoriesDB, _G.BiSMemoriesCharDB = keepDB, keepChar
+end)()
+
+-- ===================================================================== 8 Nov: the glass cockpit
+-- Arn, 8 Nov 2026: "lets give bis memories the cockpit theme treatment lets make it a cool fancy jetliner look" -
+-- and on the old window: "these are becoming too cramp find a better solution what would a multimillion dollar plane
+-- cockpit do it ... use the new box outline with center blank, and maybe a zoom feature on the map?" - and "bis
+-- memories is not showing the boss dead". Two glass displays in a quiet housing, each with one job: the left a flight
+-- computer's page (six big lines, paged), a navigation display for the map; the right the memory itself.
+;(function()
+  local J, M, MV = NS.J, NS.M, NS.MapView
+  local d = NS.DB()
+  local log = M.Log()
+  local function wipe() for k = #log, 1, -1 do log[k] = nil end end
+  local function near(c, r, g, b)
+    return type(c) == "table" and math.abs(c[1] - r) < 0.01 and math.abs(c[2] - g) < 0.01 and math.abs(c[3] - b) < 0.01
+  end
+  local function glass(c, name) return near(c, J.Glass(name)) end
+  local function theme(c, name) return near(c, NS.T.rgb(name)) end
+  local q = {}
+  local keepTimer = _G.C_Timer
+  _G.C_Timer = { After = function(t, fn) q[#q + 1] = { t = t, fn = fn } end }
+  local function run() local t = q q = {} for _, x in ipairs(t) do x.fn() end return #t end
+  for _, t in ipairs(M.TRIGGERS) do d[t.key] = true end
+  d.gap, d.delay = 0, 0
+  M.me = nil
+  wipe()
+  J.everyone, J.sel, J.page = nil, nil, "memories"
+  local f = J.Build()
+  local keys = { f.tabs[1], f.tabs[2], f.tabs[3], f.who, f.close, f.prev, f.next, f.rangeDown, f.rangeUp }
+  local function shownEntries()
+    local n = 0
+    for _, h in ipairs(f.hits) do if h:IsShown() and h.entry then n = n + 1 end end
+    return n
+  end
+  local function slotOf(e) for i, h in ipairs(f.hits) do if h:IsShown() and h.entry == e then return i end end end
+
+  H.section("8 Nov: the cockpit - a quiet housing, two glass displays")
+  H.ok(math.abs(f:GetWidth() / f:GetHeight() - 1.43) < 0.01, "still the BiS window shape, 1.43:1", f:GetWidth() .. "x" .. f:GetHeight())
+  H.ok(f:GetWidth() >= 950 and f:GetHeight() >= 660, "and much bigger than the cramped 700 x 490 it was",
+       f:GetWidth() .. "x" .. f:GetHeight())
+  H.ok(f.left and f.right and f.left:GetWidth() == f.right:GetWidth() and f.left:GetHeight() == f.right:GetHeight(),
+       "two displays, the same size")
+  local lx, rx = f.left:OffsetFor("TOPLEFT"), f.right:OffsetFor("TOPLEFT")
+  H.ok(lx and rx and lx >= 8 and lx + f.left:GetWidth() + 8 <= rx and rx + f.right:GetWidth() <= f:GetWidth() - 8,
+       "side by side, apart, inside the housing", tostring(lx) .. "/" .. tostring(rx))
+  H.ok(f.left.glass and f.left.glass._color and f.left.glass._color[1] == 0 and f.left.glass._color[2] == 0
+       and f.left.glass._color[3] == 0 and f.right.glass._color[1] == 0, "the glass is black")
+  H.ok(f.left.rim and theme(f.left.rim._color, "line2") and f.housing and theme(f.housing._color, "bg"),
+       "a thin rim round each display, the housing in BiSTheme's own ground colour")
+  -- the colours with a meaning, as a jetliner uses them
+  for _, name in ipairs({ "green", "cyan", "magenta", "amber", "white" }) do
+    local r, g, b = J.Glass(name)
+    H.ok(type(r) == "number" and type(g) == "number" and type(b) == "number", "the display colour " .. name)
+  end
+  H.ok(f:IsClampedToScreen(), "the window cannot be dragged off the screen")
+  local keepUI = UIParent._h
+  UIParent._h = 600
+  J.Show()
+  H.ok(f:GetScale() < 1 and f:GetHeight() * f:GetScale() <= 600 - 20, "a short screen: the window is drawn smaller, ratio kept",
+       f:GetScale())
+  UIParent._h = keepUI
+  J.Show()
+  H.eq(f:GetScale(), 1, "a full-size screen: full size")
+  J.Hide()
+
+  H.section("8 Nov: the cockpit - bezel keys, not a tab row")
+  H.ok(f.tabs[1].word._text == "MEMORIES" and f.tabs[2].word._text == "MAP" and f.tabs[3].word._text == "YEAR",
+       "MEMORIES, MAP, YEAR keys")
+  H.ok(f.who.word._text == "THIS CHARACTER" and f.close.word._text == "X", "the CHARACTER key and the close X are keys too")
+  for _, k in ipairs(keys) do
+    H.ok(k and k.word and realWidth(k.word) <= k:GetWidth() - 8, "the key's word fits its key: " .. tostring(k and k.word._text),
+         k and (realWidth(k.word) .. " of " .. k:GetWidth()))
+    H.ok(k and k.cap and k.shadow, "a raised key (a light top edge, a shadow under): " .. tostring(k and k.word._text))
+  end
+  -- set INTO THE BEZEL, outside the glass: above the displays or below them, never on them
+  for _, k in ipairs(keys) do
+    local _, y = k:OffsetFor("TOPLEFT")
+    if not y then _, y = k:OffsetFor("TOPRIGHT") end
+    local top = y and -y
+    H.ok(top and (top + k:GetHeight() <= J.DISP_TOP or top >= J.DISP_TOP + J.DISP_H), "off the glass: " .. k.word._text,
+         tostring(top))
+  end
+  J.Show()
+  f.tabs[2]:Click()
+  H.ok(J.page == "map" and f.map:IsShown() and not f.list:IsShown(), "MAP: the left display is the map")
+  H.ok(f.tabs[2].lit:GetAlpha() == 1 and glass(f.tabs[2].lit._color, "green") and f.tabs[1].lit:GetAlpha() == 0,
+       "the lit key has its green bar, the others none")
+  H.ok(f.right:IsShown() and f.detail:IsShown(), "the right display still holds the memory")
+  f.tabs[3]:Click()
+  H.ok(J.page == "this year" and f.year:IsShown() and not f.map:IsShown(), "YEAR")
+  f.tabs[1]:Click()
+  H.ok(J.page == "memories" and f.list:IsShown() and not f.year:IsShown(), "MEMORIES")
+  f.who:Click()
+  H.ok(J.everyone and f.who.word._text == "ALL CHARACTERS", "CHARACTER: every character's")
+  f.who:Click()
+  H.ok(not J.everyone and f.who.word._text == "THIS CHARACTER", "and back")
+  -- every key pops under the mouse: the wash, the bar on the left - and gives its light back
+  for _, k in ipairs(keys) do
+    k:Fire("OnEnter")
+    H.ok(k.wash:GetAlpha() >= 0.3 and theme(k.wash._color, "accent") and k.bar:GetAlpha() == 1, "pops: " .. k.word._text)
+    k:Fire("OnLeave")
+    H.ok(k.wash:GetAlpha() == 0 and k.bar:GetAlpha() == 0, "and rests: " .. k.word._text)
+  end
+  f.tabs[1]:Fire("OnEnter") f.tabs[1]:Fire("OnLeave")
+  H.ok(f.tabs[1].lit:GetAlpha() == 1, "a hover does not put out the lit key's bar")
+  f.close:Click()
+  H.ok(not f:IsShown(), "X closes it")
+
+  H.section("8 Nov: the cockpit - the flight computer's page, six big lines")
+  wipe()
+  for i = 1, 40 do
+    table.insert(log, 1, { at = 1000 + i, reason = "zone", detail = "place " .. i, zone = "Mulgore", char = M.Me() })
+  end
+  J.Show()
+  J.Turn(-99)
+  H.eq(J.PER, 6, "six memories a page")
+  H.eq(shownEntries(), 6, "six on the first page")
+  H.eq(strip(f.pageHead._text), "MEMORIES 1/7", "the page header: which page of how many")
+  H.ok(strip(f.rows[1]._text):find("Mulgore", 1, true) and f.hits[1].entry == nil, "a night's heading first",
+       strip(f.rows[1]._text))
+  H.ok(glass(f.rows[1]._color, "cyan") and f.hits[1].sep and f.hits[1].sep:IsShown(), "a cyan separator")
+  H.ok(f.rows[2]._text == "place 40" and strip(f.subs[2]._text):find("NEW PLACE", 1, true), "the newest under it: the title "
+       .. "big, the time and the kind above it", strip(f.subs[2]._text))
+  H.ok((f.rows[2]._size or 0) >= 14 and f.hits[2]:GetHeight() >= 50, "big type, generous lines", f.hits[2]:GetHeight())
+  H.ok(glass(f.rows[2]._color, "white") and glass(f.subs[2]._color, "cyan"), "white data, cyan labels")
+  H.eq(J.Turn(1), 2, "the next page")
+  H.eq(strip(f.pageHead._text), "MEMORIES 2/7", "the header follows")
+  H.ok(strip(f.rows[1]._text):find("Mulgore", 1, true) and f.rows[2]._text == "place 34",
+       "a page that starts inside a night repeats its heading")
+  f.next:Click()
+  H.eq(J.pageNo, 3, "NEXT PAGE")
+  f.prev:Click()
+  H.eq(J.pageNo, 2, "PREV PAGE")
+  f:Fire("OnMouseWheel", -1)
+  H.eq(J.pageNo, 3, "the wheel down: the next page")
+  f:Fire("OnMouseWheel", 1)
+  H.eq(J.pageNo, 2, "the wheel up: the page before")
+  H.eq(J.Turn(99), 7, "not past the last page")
+  H.eq(shownEntries(), 4, "the last page holds what is left")
+  H.eq(J.Turn(-99), 1, "nor before the first")
+  f.hits[2]:Click()
+  H.ok(J.sel == log[1] and f.selL:IsShown() and f.selR:IsShown() and glass(f.rows[2]._color, "magenta")
+       and glass(f.selL.bar._color, "magenta"), "the chosen line: magenta brackets, its title magenta")
+  H.ok(f.text._text == "place 40", "and the right display holds it")
+  J.Select(log[40])
+  H.ok(J.pageNo == 7 and slotOf(log[40]), "choosing a memory elsewhere turns to its page", J.pageNo)
+  f.hits[2]:Fire("OnEnter")
+  H.ok(f.hits[2].wash:GetAlpha() > 0 and f.hits[2].bar:GetAlpha() == 1, "a line pops under the mouse")
+  f.hits[2]:Fire("OnLeave")
+  fitsIn(f, "the cockpit, the last page")
+  J.Turn(-99)
+  fitsIn(f, "the cockpit, the first page")
+  -- the worst page: every memory a night of its own, a heading over each
+  wipe()
+  for i = 1, 8 do
+    table.insert(log, 1, { at = 100000 * i, reason = "boss", detail = "a very long boss name that goes on and on " .. i,
+                           zone = "Blackrock Depths - The Grim Guzzler", char = M.Me() })
+  end
+  J.Turn(-99)
+  J.Refresh()
+  local last = 0
+  for _, h in ipairs(f.hits) do
+    if h:IsShown() then
+      local _, y = h:OffsetFor("TOPLEFT")
+      last = math.max(last, -y + h:GetHeight())
+    end
+  end
+  H.ok(shownEntries() == 6 and last <= f.list:GetHeight(), "six nights, six headings: still inside the display",
+       last .. " of " .. f.list:GetHeight())
+  fitsIn(f, "the cockpit, a heading over every line")
+  J.Hide()
+
+  H.section("8 Nov: the cockpit - the boss lies dead beside you")
+  wipe()
+  HARNESS.knownCreature[11502] = nil
+  local boss = { reason = "boss", detail = "first kill: Ragnaros", zone = "Molten Core", level = 60, at = os.time() - 60,
+                 char = M.Me(), npc = 11502, secs = 250, file = "WoWScrnShot_110826_201500", with = { "Kumlance Wildhammer" } }
+  log[1] = boss
+  q = {}
+  J.Show()
+  J.Select(boss)
+  local them, you = f.post.them, f.post.you
+  H.ok(you:IsShown() and you._unit == "player", "you, on the left")
+  H.ok(them:IsShown() and them._creature == 11502, "the boss is asked for, beside you")
+  H.eq(them:GetModelFileID(), 0, "the client's first ask for a creature draws nothing (the rule, as measured)")
+  H.ok(them._cam == nil and them._zoom == nil, "no camera yet - nothing to point it at")
+  H.ok(#q >= 1 and math.abs(q[#q].t - J.LOAD_WAIT) < 1e-9 and J.LOAD_WAIT >= 0.5 and J.LOAD_WAIT <= 0.8,
+       "it looks again a moment later", q[1] and q[1].t)
+  run()
+  H.eq(them._asks, 2, "nothing drew: asked a second time")
+  H.ok(them:GetModelFileID() > 0, "and the second ask lands")
+  H.ok(them._cam == nil, "the camera waits for the next look (a new model resets it)")
+  run()
+  H.eq(them._anim, J.DEAD, "the boss lies dead (anim " .. tostring(J.DEAD) .. ", UNVERIFIED)")
+  H.ok(them._zoom == 0 and them._cam and math.abs(them._cam - J.BOSS_CAM) < 1e-9, "the camera, set AFTER it drew")
+  H.ok(type(them._facing) == "number" and them._facing < 0 and type(you._facing) == "number" and you._facing > 0,
+       "facing each other")
+  run()
+  H.eq(them._asks, 2, "drawn: no more asks")
+  -- the right display: the note in big white type, then the data blocks
+  H.ok(f.text._text == "first kill: Ragnaros" and (f.text._size or 0) >= 14 and glass(f.text._color, "white"), "the note, big and white")
+  H.ok(strip(f.kind._text):find("BOSS", 1, true), "the kind above it", strip(f.kind._text))
+  local want = { where = "Molten Core", lvl = "60", took = "4:10", file = nil }
+  for k, v in pairs(want) do
+    local row = f.data[k]
+    H.ok(row and row.lab:IsShown() and glass(row.lab._color, "cyan") and strip(row.val._text):find(v, 1, true)
+         and glass(row.val._color, "white"), "data block " .. k .. ": cyan label, white value", row and strip(row.val._text))
+  end
+  H.ok(f.data.with.lab:IsShown() and f.withBtns[1]:IsShown() and f.withBtns[1].who == "Kumlance Wildhammer", "WITH: the names")
+  H.ok(f.data.file.lab:IsShown() and f.fileBox:IsShown() and f.fileBox._text == "WoWScrnShot_110826_201500", "FILE: ready to copy")
+  H.ok(not f.data.from.lab:IsShown(), "a block with nothing to say is not drawn")
+  fitsIn(f, "the cockpit, a boss open")
+  -- a creature the client has drawn once this session: the first ask lands, the camera follows the check
+  J.Select(nil)
+  J.Select(boss)
+  H.ok(them:GetModelFileID() > 0 and them._cam == nil, "known now: drawn at once - the camera still waits for the check")
+  run()
+  H.ok(them._asks == 1 and them._cam and them._anim == J.DEAD, "one ask, then the camera and the pose")
+  -- no "dead" pose on this client: the death animation
+  HARNESS.noAnim[J.DEAD] = true
+  J.Select(nil) J.Select(boss) run()
+  H.eq(them._anim, 1, "a client without the dead pose: the death animation instead")
+  HARNESS.noAnim[J.DEAD] = nil
+  -- the model by display id, when the note has one (ADVENT.EXE's creatures, TakeMemory's extra)
+  boss.display = 7970
+  J.Select(nil) J.Select(boss) run()
+  H.ok(them._display == 7970 and them._creature == nil and them:GetModelFileID() > 0 and them._cam, "a note's display id: that model")
+  boss.display = nil
+  -- BiS Tools' Codex knows the model: used when the note has none; never required
+  HARNESS.knownCreature[11502] = nil
+  _G.BiSToolsAPI = { major = 1, version = 4, CodexCreature = function(id) return id == 11502 and { id = id, display = 555 } or nil end }
+  J.Select(nil) J.Select(boss) run()
+  H.ok(them._display == 555, "BiS Tools' Codex: its display for the creature", them._display)
+  _G.BiSToolsAPI = { major = 1, CodexCreature = function() error("boom") end }
+  J.Select(nil) J.Select(boss) run() run()
+  H.ok(them._creature == 11502 and them:GetModelFileID() > 0, "a Codex that errors: the creature by its id")
+  _G.BiSToolsAPI = nil
+  -- a stale look: another memory chosen before the moment came does not touch the model
+  -- painted while shut (a memory landing, /bism wow): the hidden model drew nothing - opening asks again
+  J.Hide()
+  J.sel = boss
+  J.Refresh()
+  HARNESS.knownCreature[11502] = true
+  J.Show()
+  H.ok(them:GetModelFileID() > 0, "painted while shut, then opened: the boss is asked again, on the screen")
+  local other = { reason = "levelup", detail = "level 61", at = os.time() - 30, char = M.Me() }
+  log[2] = other
+  HARNESS.knownCreature[11502] = nil
+  J.Select(boss)
+  J.Select(other)
+  local asks = them._asks
+  run()
+  H.ok(them._asks == asks and not them:IsShown(), "chosen something else meanwhile: the old look does nothing")
+  -- whoever killed you stands over you - alive
+  local death = { reason = "death", detail = "killed by Hogger", at = os.time() - 20, char = M.Me(), npc = 448 }
+  log[3] = death
+  J.Select(death) run() run()
+  H.ok(them._creature == 448 and them._anim == 0 and them:GetModelFileID() > 0, "a killer stands")
+  J.Hide()
+  J.sel = nil
+
+  H.section("8 Nov: the cockpit - the navigation display (the map, with a range knob)")
+  wipe()
+  _G.C_Map.GetMapArtLayers = function() return { { layerWidth = 1002, layerHeight = 668, tileWidth = 256, tileHeight = 256 } } end
+  _G.C_Map.GetMapArtLayerTextures = function() local t = {} for i = 1, 12 do t[i] = 1000 + i end return t end
+  _G.C_Map.GetMapRectOnMap = function(_, to) if to == 947 then return 0.4, 0.6, 0.3, 0.5 end end
+  MV.rects = {}
+  -- three memories a step apart in one zone (one box at the world's range), one across the map
+  local near1 = { reason = "boss", detail = "a", at = 10, map = 1429, x = 0.50, y = 0.50, char = M.Me() }
+  local near2 = { reason = "zone", detail = "b", at = 11, map = 1429, x = 0.52, y = 0.50, char = M.Me() }
+  local near3 = { reason = "loot", detail = "c", at = 12, map = 1429, x = 0.54, y = 0.50, char = M.Me() }
+  local far = { reason = "levelup", detail = "far away", at = 13, map = 1436, x = 0.5, y = 0.5, char = M.Me() }
+  local realRect = _G.C_Map.GetMapRectOnMap
+  _G.C_Map.GetMapRectOnMap = function(from, to)
+    if to == 947 and from == 1429 then return 0.4, 0.6, 0.3, 0.5 end
+    if to == 947 and from == 1436 then return 0.1, 0.2, 0.1, 0.2 end
+  end
+  log[1], log[2], log[3], log[4] = near1, near2, near3, far
+  MV.rects = {}
+  J.Show()
+  f.tabs[2]:Click()
+  local map = f.map
+  local function pins()
+    local out = {}
+    for _, b in ipairs(map.dots or {}) do if b:IsShown() then out[#out + 1] = b end end
+    return out
+  end
+  local function clusterPin() for _, b in ipairs(pins()) do if #b.members > 1 then return b end end end
+  local function pinOf(e) for _, b in ipairs(pins()) do if #b.members == 1 and b.members[1].e == e then return b end end end
+  H.eq(strip(f.knob.value._text), "1x", "it opens at the whole map: range 1x")
+  H.ok(f.knob:IsShown() and f.rangeDown:IsShown() and f.rangeUp:IsShown() and not f.prev:IsShown(),
+       "the soft keys under the display change with the page: the range knob, not PREV/NEXT")
+  H.eq(#pins(), 2, "near pins merge: one box for the three, one for the far one")
+  local c = clusterPin()
+  H.ok(c and #c.members == 3 and strip(c.count._text) == "3" and c.count:IsShown(), "the merged box says how many")
+  -- HOLLOW: four thin sides and a dark outline round them, nothing drawn in the middle
+  local p = pinOf(far)
+  H.ok(p and p.fill == nil and #p.sides == 4 and #p.shade == 4, "a pin is a hollow square: four sides, a dark outline")
+  local thin = true
+  for _, s in ipairs(p and p.sides or {}) do
+    if math.min(s._w or 99, s._h or 99) > MV.THICK or s._all then thin = false end
+  end
+  H.ok(thin and p and p:GetWidth() >= 2 * MV.THICK + 4, "the sides are thin: the middle stays see-through")
+  local rr, gg, bb = NS.T.rgb(MV.COLOUR.levelup)
+  H.ok(p and near(p.sides[1]._color, rr, gg, bb), "in the memory's colour")
+  -- the wheel zooms, around the cursor (put on the merged box), and stops at both ends
+  local ux, uy = c.ux, c.uy
+  local cx, cy = map:GetLeft() + ux, map:GetTop() - uy
+  _G.GetCursorPosition = function() return cx, cy end
+  local mx, my = MV.ToMap(map, ux, uy)
+  map:Fire("OnMouseWheel", 1)
+  H.eq(strip(f.knob.value._text), "2x", "the wheel up: closer, range 2x")
+  local mx2, my2 = MV.ToMap(map, ux, uy)
+  H.ok(math.abs(mx - mx2) < 1e-6 and math.abs(my - my2) < 1e-6, "the spot under the cursor stays under it",
+       ("%.4f,%.4f -> %.4f,%.4f"):format(mx, my, mx2, my2))
+  for _ = 1, 10 do map:Fire("OnMouseWheel", 1) end
+  H.eq(strip(f.knob.value._text), MV.RANGES[#MV.ZOOMS], "no closer than the last range")
+  H.ok(clusterPin() == nil and pinOf(near1) and pinOf(near2) and pinOf(near3),
+       "close in: the merged box has split into its three memories")
+  for _ = 1, 10 do map:Fire("OnMouseWheel", -1) end
+  H.eq(strip(f.knob.value._text), "1x", "the wheel down: back out, no further than the whole map")
+  H.eq(#pins(), 2, "and they merge again")
+  f.rangeUp:Click()
+  H.eq(strip(f.knob.value._text), "2x", "the + key")
+  f.rangeDown:Click()
+  H.eq(strip(f.knob.value._text), "1x", "the - key")
+  f.knob:Fire("OnMouseWheel", 1)
+  H.eq(strip(f.knob.value._text), "2x", "the wheel on the knob turns it")
+  f.rangeDown:Click()
+  -- the knob's ticks show where on its range it is
+  local lit = 0
+  for _, t in ipairs(f.knob.ticks) do if t:GetAlpha() == 1 then lit = lit + 1 end end
+  H.ok(#f.knob.ticks == #MV.ZOOMS and lit == 1, "the knob's ticks: one lit at 1x", lit)
+  -- a merged box, clicked: zoom in on it until it splits
+  c = clusterPin()
+  local tries = 0
+  while c and tries < 6 do c:Click() tries = tries + 1 c = clusterPin() end
+  H.ok(c == nil and MV.Zoomed(map) > 1, "clicking the merged box zooms in on it until its memories stand apart", tries)
+  local p1 = pinOf(near1)
+  H.ok(p1 and p1:IsShown(), "the memory it held is on the screen")
+  -- a single pin, clicked: that memory opens on the right display; the map stays
+  p1:Click()
+  H.ok(J.sel == near1 and J.page == "map" and f.text._text == "a", "clicking a pin opens its memory on the right display")
+  p1 = pinOf(near1)
+  H.ok(p1 and glass(p1.sides[1]._color, "magenta") and p1:GetWidth() > pinOf(near2):GetWidth(),
+       "the chosen pin: magenta, and bigger")
+  p1:Fire("OnEnter")
+  H.ok(theme(p1.sides[1]._color, "accent"), "a pin lights under the mouse")
+  p1:Fire("OnLeave")
+  H.ok(glass(p1.sides[1]._color, "magenta"), "and gives its colour back")
+  -- drag pans; nothing runs once the button is up, or once the window is shut
+  local v0x = map.view.cx
+  map:Fire("OnMouseDown", "LeftButton")
+  H.ok(map:GetScript("OnUpdate") ~= nil, "a drag follows the mouse while the button is down")
+  cx = cx + 60
+  map:Fire("OnUpdate", 0.016)
+  H.ok(map.view.cx < v0x, "dragged right: the map moves with the hand", map.view.cx .. " < " .. v0x)
+  cx = cx + 100000
+  map:Fire("OnUpdate", 0.016)
+  local half = MV.Half(map)
+  H.ok(map.view.cx >= half - 1e-9, "never past the map's edge", map.view.cx .. " / " .. half)
+  map:Fire("OnMouseUp", "LeftButton")
+  H.eq(map:GetScript("OnUpdate"), nil, "the button up: nothing runs")
+  map:Fire("OnMouseDown", "LeftButton")
+  J.Hide()
+  H.eq(map:GetScript("OnUpdate"), nil, "shut mid-drag: nothing runs")
+  J.Show()
+  fitsIn(f, "the cockpit, the navigation display")
+  _G.GetCursorPosition = function() return 300, 400 end
+  _G.C_Map.GetMapRectOnMap = realRect
+  f.tabs[1]:Click()
+  J.Hide()
+
+  H.section("8 Nov: the cockpit - the memo line")
+  wipe()
+  for i = 1, 3 do log[i] = { reason = "zone", detail = "x" .. i, at = 50 + i, char = M.Me() } end
+  J.Show()
+  H.ok(strip(f.pathLabel._text) == "ALBUM" and glass(f.pathLabel._color, "cyan"), "a cyan ALBUM label")
+  H.ok(f.pathBox._text:find("BiSMemories-Album.html", 1, true) and f.pathBox._color and glass(f.pathBox._color, "white"),
+       "the path in white")
+  H.ok(strip(f.count._text) == "3 kept" and glass(f.count._color, "green"), "the count in green")
+  local tip = {}
+  local realSetText, realAdd = GameTooltip.SetText, GameTooltip.AddLine
+  GameTooltip.SetText = function(_, t) tip[#tip + 1] = strip(t) end
+  GameTooltip.AddLine = function(_, t) tip[#tip + 1] = strip(t) end
+  f.pathBox:Fire("OnEnter")
+  GameTooltip.SetText, GameTooltip.AddLine = realSetText, realAdd
+  H.ok(table.concat(tip, " "):find("Windows key + R", 1, true), "how to use it, in the tooltip (one bar, one label)")
+  J.Hide()
+
+  H.section("8 Nov: TakeMemory says which creature it was (API version 3)")
+  local A = _G.BiSMemoriesAPI
+  H.eq(A.version, 3, "BiSMemoriesAPI version 3")
+  wipe()
+  local got = A.TakeMemory("ADVENT.EXE: SKUM slain", "boss", "BiSShell",
+                           { npc = 3674, display = 1234, detail = "hacked", reason = "loot", evil = true })
+  H.ok(got and got.npc == 3674 and got.display == 1234, "the creature and its model are kept on the note")
+  H.ok(got and got.detail == "ADVENT.EXE: SKUM slain" and got.reason == "boss" and got.evil == nil,
+       "nothing else from the extra is taken")
+  H.ok(log[1] and log[1].npc == 3674 and log[1].display == 1234, "in the album too")
+  got.npc = 1
+  H.eq(log[1].npc, 3674, "the answer is a copy")
+  got = A.TakeMemory("odd numbers", "boss", "BiSShell", { npc = "3674", display = -5 })
+  H.ok(got and got.npc == nil and got.display == nil, "a string or a negative number is not a creature")
+  got = A.TakeMemory("half", "boss", nil, { npc = 2.5, display = 77 })
+  H.ok(got and got.npc == nil and got.display == 77, "only whole numbers")
+  got = A.TakeMemory("no extra", "boss", nil, "not a table")
+  H.ok(got and got.npc == nil, "an extra that is no table: ignored")
+  local secret = setmetatable({}, {})
+  local keepSecret = _G.issecretvalue
+  _G.issecretvalue = function(v) return rawequal(v, secret) end
+  got = A.TakeMemory("hidden", "boss", nil, { npc = secret })
+  _G.issecretvalue = keepSecret
+  H.ok(got and got.npc == nil, "a hidden value is never read")
+  -- KEEP THE INTERFACE IN (Arn, 8 Nov: ADVENT.EXE's boss picture "hid ui took a screenshot and brought everything
+  -- back" - the game is ON the interface, so a clean shot photographs the world instead)
+  local ui = _G.UIParent
+  M.Clean(false)
+  ui:SetAlpha(1)
+  d.clean = true
+  got = A.TakeMemory("ADVENT.EXE: the terminal in the picture", "boss", "BiSShell", { npc = 3674, keepUI = true })
+  H.ok(got and ui:GetAlpha() == 1 and not M.uiHidden, "keepUI: the interface stays in the picture")
+  H.ok(got and got.keepUI == nil and log[1].keepUI == nil and got.npc == 3674, "it is not kept on the note; the creature is")
+  got = A.TakeMemory("a clean one", "boss", "BiSShell", { keepUI = "yes" })
+  H.ok(got and ui:GetAlpha() == 0 and M.uiHidden, "without it (or anything but exactly true): a clean shot still hides it")
+  M.Clean(false)
+  run()
+  H.eq(ui:GetAlpha(), 1, "and gives it back")
+  local hdr = bytes(ROOT .. "/API.lua") or ""
+  H.ok(hdr:find("TakeMemory(note, kind, from, extra)", 1, true) and hdr:find("since version 3", 1, true)
+       and hdr:find("keepUI", 1, true), "the header documents it")
+
+  H.section("8 Nov: the cockpit - lean")
+  local Cost = dofile(ROOT .. "/../_bisdev/dev/cost.lua")
+  wipe()
+  for i = 1, 250 do
+    log[i] = { reason = (i % 3 == 0) and "boss" or "zone", detail = "memory " .. i, at = 1000000 - i * 5000, zone = "Mulgore",
+               char = M.Me(), map = 1429, x = (i % 17) / 17, y = (i % 13) / 13 }
+  end
+  MV.rects = {}
+  J.Show()
+  f.tabs[1]:Click()
+  local n, by = Cost.Count(function() J.Turn(1) end)
+  H.say(("   cost: the cockpit, turning a page of 250 memories = %d calls"):format(n))
+  -- budgets a little above what was measured (8 Nov 2026): a page turn 0 (the frames are made once, M.Me is kept), a
+  -- map repaint 0 (the art and the zone rectangles are kept after the first paint), a drag one cursor read a frame
+  H.ok(n <= 5, "turning a page asks the client at most 5 things (measured " .. n .. ")", Cost.Top(by, 5))
+  f.tabs[2]:Click()
+  n, by = Cost.Count(function() MV.Zoom(f.map, 1) end)
+  H.say(("   cost: the cockpit, a map repaint of 250 pins = %d calls"):format(n))
+  H.ok(n <= 5, "a map repaint asks the client at most 5 things (measured " .. n .. ")", Cost.Top(by, 5))
+  local hand = 300
+  _G.GetCursorPosition = function() return hand, 400 end
+  n, by = Cost.Count(function()
+    f.map:Fire("OnMouseDown", "LeftButton")
+    for i = 1, 60 do hand = 300 + i f.map:Fire("OnUpdate", 0.016) end
+    f.map:Fire("OnMouseUp", "LeftButton")
+  end)
+  H.say(("   cost: the cockpit, a second of dragging the map = %d calls"):format(n))
+  H.ok(n <= 70, "a second's drag (60 frames) stays in its budget (measured " .. n .. ")", Cost.Top(by, 5))
+  -- a held button and a still hand: nothing repaints
+  local paints = 0
+  local realDraw = MV.Draw
+  MV.Draw = function(...) paints = paints + 1 return realDraw(...) end
+  f.map:Fire("OnMouseDown", "LeftButton")
+  for _ = 1, 30 do f.map:Fire("OnUpdate", 0.016) end
+  f.map:Fire("OnMouseUp", "LeftButton")
+  MV.Draw = realDraw
+  H.eq(paints, 0, "a still hand on the map repaints nothing")
+  _G.GetCursorPosition = function() return 300, 400 end
+  J.Hide()
+  H.ok(f:GetScript("OnUpdate") == nil and f.map:GetScript("OnUpdate") == nil, "shut: nothing of the journal ticks")
+  f.tabs[1]:Click()
+  wipe()
+  J.sel, J.page = nil, "memories"
+  _G.C_Timer = keepTimer
 end)()
 
 H.report()

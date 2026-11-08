@@ -427,11 +427,16 @@ function M.Shoot(reason, detail, from, extra)
     gear = M.Gear(),
   }
   entry.map, entry.x, entry.y = M.Spot()
-  for k, v in pairs(type(extra) == "table" and extra or {}) do entry[k] = v end
+  -- `keepUI` (8 Nov 2026, BiS Shell's ADVENT.EXE through API.lua): this picture keeps the interface in - the game is
+  -- ON the interface, and a clean shot photographed the world behind it. For the shot only, never on the note.
+  local keepUI = type(extra) == "table" and extra.keepUI == true
+  for k, v in pairs(type(extra) == "table" and extra or {}) do
+    if k ~= "keepUI" then entry[k] = v end
+  end
 
   local function capture()
     entry.file = shotStem()
-    if d.clean then M.Clean(true) end
+    if d.clean and not keepUI then M.Clean(true) end
     if Screenshot then pcall(Screenshot) end
     click()
     -- other addons hear it here, at the shutter, so the file name is on the note they get (API.lua)

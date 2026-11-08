@@ -29,7 +29,9 @@
 --     map = 1413, x = 0.51, y = 0.30,                 -- the client's map and the spot on it (none inside an instance)
 --     gear   = { [16] = 17182, ... },                 -- the item id in each slot a model shows
 --     npc    = 11502,                                 -- the creature it was about (a boss, a killer)
---     killer = "Neg Crotic", secs = 250 }             -- a death's killer; a boss fight's length
+--     killer = "Neg Crotic", secs = 250,              -- a death's killer; a boss fight's length
+--     -- since version 3 (8 Nov 2026), when the asking addon said so (TakeMemory's extra):
+--     display = 7970 }                                -- the creature's model (a display id)
 --
 -- KINDS since version 2: "first" (a mount, riding), "gamba" (your biggest BiS Gamba win), "group"
 -- (a group photo) - beside levelup, boss, loot, achievement, death, duel, zone, exalted, candid.
@@ -46,11 +48,17 @@
 --   BiSMemoriesAPI.Kinds()
 --       -> a list of { key = "boss", label = "a boss dying", on = true|false } - every kind of
 --          memory and whether the player has it switched on - or nil, "not ready".
---   BiSMemoriesAPI.TakeMemory(note, kind, from)
+--   BiSMemoriesAPI.TakeMemory(note, kind, from, extra)
 --       note: string, what it was (cut to 200 characters). Required.
 --       kind: optional, one of Kinds()'s keys - the player's switch for that kind then decides
 --             (a BiSGuild boss memory obeys "/bism off boss"). nil = "manual", like /bism now.
 --       from: optional string, the asking addon's name, kept on the note.
+--       extra: optional table, since version 3 - only these fields are read, anything else is ignored:
+--             npc = number      the creature it was about (whole, above 0) - the journal's postcard draws it
+--                               (a "boss" lies dead beside the player)
+--             display = number  that creature's model (a display id, whole, above 0), drawn in its place
+--             keepUI = true     this picture keeps the interface in (exactly true; no clean shot for it) -
+--                               for a game that is played ON the interface. Not kept on the note.
 --       -> the memory (a copy; its file comes a moment later, with the picture), or nil and why:
 --          "not ready", "no note", "no such kind", "off" (the player switched that kind off),
 --          "too soon" (inside the player's gap between shots), "failed".
@@ -66,7 +74,7 @@
 --------------------------------------------------------------------------------
 local _, ns = ...
 
-local API = { major = 1, version = 2 }
+local API = { major = 1, version = 3 }
 BiSMemoriesAPI = API
 
 local EVENTS = { BiSMemories_Taken = true }
@@ -135,7 +143,26 @@ function API.Kinds()
   return out
 end
 
-function API.TakeMemory(note, kind, from)
+-- a whole number above 0 the caller may hand us (a creature or model id); a secret one is refused BEFORE anything reads it
+local function id(v)
+  if v == nil then return nil end
+  if issecretvalue then
+    local ok, yes = pcall(issecretvalue, v)
+    if not ok or yes then return nil end
+  end
+  if type(v) ~= "number" or v <= 0 or v ~= math.floor(v) or v ~= v then return nil end
+  return v
+end
+
+-- what TakeMemory takes from `extra` (since version 3): those three fields, nothing else
+local function extras(t)
+  if type(t) ~= "table" then return nil end
+  local ok, npc, display, keep = pcall(function() return id(t.npc), id(t.display), rawequal(t.keepUI, true) end)
+  if not ok then return nil end
+  return { npc = npc, display = display, keepUI = keep or nil }
+end
+
+function API.TakeMemory(note, kind, from, extra)
   local M, why = Camera()
   if not M then return nil, why end
   note = readable(note)
@@ -150,7 +177,7 @@ function API.TakeMemory(note, kind, from)
     if not reason then return nil, "no such kind" end
   end
   from = readable(from)
-  local ok, entry, refused = pcall(M.Shoot, reason, note, from and from:sub(1, 40))
+  local ok, entry, refused = pcall(M.Shoot, reason, note, from and from:sub(1, 40), extras(extra))
   if not ok then return nil, "failed" end
   if not entry then return nil, refused or "failed" end
   return copy(entry)
