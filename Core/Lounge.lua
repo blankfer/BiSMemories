@@ -59,9 +59,10 @@ L.WIN = { 3, 21.3, 24, 29.2 }        -- the window's hole (dev/art.py WIN_W x WI
 L.RIM = 2.7                          -- the surround art reaches this far past the hole (dev/art.py: 1.1 + 0.4 + 1.2)
 L.PASS = { 30.5, 20.5, 37, 17 }
 L.CARD = { 31, 39.4, 36, 6.0 }
-L.SIGN = { 31, 46.4, 26, 2.4 }
+L.SIGN = { 31, 46.4, 18.4, 2.4 }    -- shorter since the NAMES key (8 Nov), and so no weekday: "FASTEN SEATBELT · 07 NOV"
 L.CALL = { 31, 50.9, 37.2, 2.9 }
-L.SHARE = { 58.2, 46.3, 9.8, 2.6 }   -- the SHARE pill, beside the lit sign (Share.lua)
+L.SHARE = { 50.2, 46.3, 18.0, 2.6 }  -- the NAMES key and the SHARE pill, beside the lit sign (Share.lua)
+L.NAMES_W, L.SHARE_X = 7.4, 8.2      -- inside that row: NAMES ON|OFF from 0, SHARE from 8.2 (9.8 wide, as before)
 L.MAP = { 69, 20.2, 29, 21.5 }
 L.FE = { 69, 43, 29, 9.6 }
 
@@ -714,8 +715,32 @@ local function buildCall(room)
   local s = CreateFrame("Frame", nil, room)
   at(s, room, L.SHARE[1], L.SHARE[2], L.SHARE[3], L.SHARE[4])
   L.shareRow = s
-  L.call.share = pill(s, "SHARE", 0, L.SHARE[3], function() if ns.Share and J.sel then ns.Share.Take(J.sel) end end)
+  L.call.share = pill(s, "SHARE", L.SHARE_X, L.SHARE[3] - L.SHARE_X,
+    function() if ns.Share and J.sel then ns.Share.Take(J.sel) end end)
   L.call.share.popIf = function() return J.sel ~= nil end
+  -- NAMES ON | OFF (Arn, 8 Nov, on the lounge: "option should be here to hide or share names"): the share card's privacy
+  -- switch where the card is taken - the same `shareHidden` as `/bism share names` and the options row. OFF (the
+  -- default) = you are your class, your party their classes; ON in tangerine, because names are going out.
+  L.call.names = pill(s, "NAMES OFF", 0, L.NAMES_W, function()
+    local d = ns.DB()
+    d.shareHidden = not L.NamesHidden()
+    L.PaintNames()
+  end)
+end
+
+--- True when the share card keeps names off (anything but a plain "names on" - Share.lua reads it the same way).
+function L.NamesHidden()
+  local d = ns.DB and ns.DB()
+  return not (type(d) == "table" and d.shareHidden == false)
+end
+
+function L.PaintNames()
+  local b = L.call and L.call.names
+  if not b then return end
+  local hidden = L.NamesHidden()
+  b.word:SetText(hidden and "NAMES OFF" or "NAMES ON")
+  local r, g, bl = L.Rgb(hidden and "ink" or "tangerine")
+  b.word:SetTextColor(r, g, bl)
 end
 
 local function buildMap(room)
@@ -1027,7 +1052,7 @@ function L.PaintCard()
   local v = L.CardFields(e, { room = c.line.room * 2 * 0.88, size = c.line.pt })
   L.Put(c.title, v.title)
   c.line:SetText(v.line)                       -- fitted name by name in CardFields, colours kept
-  L.Put(L.sign.text, "FASTEN SEATBELT · " .. (e and when(e.at, "%a %d %b"):upper() or "--"))
+  L.Put(L.sign.text, "FASTEN SEATBELT · " .. (e and when(e.at, "%d %b"):upper() or "--"))   -- no weekday: the NAMES key took its room
 end
 
 --- The memory `by` steps older (+1) or newer (-1) than the chosen one, or nil.
@@ -1039,6 +1064,7 @@ end
 function L.PaintCall()
   L.call.earlier:SetAlpha(L.Neighbour(1) and 1 or 0.45)
   L.call.later:SetAlpha(L.Neighbour(-1) and 1 or 0.45)
+  L.PaintNames()
 end
 
 --- THE ROUTE: dashed arcs joining the memories on the map in the order they happened (the newest L.ARCS legs). Each

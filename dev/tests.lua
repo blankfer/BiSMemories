@@ -3504,6 +3504,13 @@ end)()
   H.ok(P and P.you:IsShown() and P.you._unit == "player", "you, in the oval window")
   H.ok(P and P.them:IsShown() and P.them._creature == 93654, "the boss beside you (a creature new this session: the first ask draws nothing)")
   H.ok(S.window and S.window:DoesClipChildren(), "the window's box cuts the models at its edge")
+  -- Arn's first card (8 Nov): a BLANK seat - the window at a flat level 5 under a ticket at 22, so the ticket's own seat
+  -- paper covered the sky, the models and the oval. A child frame below its parent's level draws under its textures.
+  local tl = S.ticket:GetFrameLevel()
+  H.ok(S.window:GetFrameLevel() > tl and P.you:GetFrameLevel() > tl and P.them:GetFrameLevel() > tl
+       and S.oval:GetFrameLevel() > tl,
+       "the window, both models and the oval sit ABOVE the ticket's paper, not under it",
+       tl .. " / " .. S.window:GetFrameLevel() .. " / " .. S.oval:GetFrameLevel())
   H.ok(S.oval and S.oval:GetFrameLevel() > S.window:GetFrameLevel() + 1 and tostring(S.oval.art._texture):find("Media\\oval", 1, true),
        "our own oval art over the models")
   H.eq(#snaps, 0, "no picture before the models have drawn")
@@ -3626,6 +3633,17 @@ end)()
   H.ok(back:IsShown() and S.entry == boss and not L.back:IsShown(), "SHARE in the lounge: the chosen memory, the lounge put away")
   S.Close() settle()
   H.ok(L.back:IsShown(), "and the lounge is back after it")
+  -- NAMES ON | OFF beside SHARE (Arn, 8 Nov: "option should be here to hide or share names")
+  local dN = NS.DB()
+  local wasHidden = dN.shareHidden
+  dN.shareHidden = true
+  L.Paint()
+  H.ok(L.call.names and strip(L.call.names.word._text) == "NAMES OFF", "the lounge has a NAMES key, OFF by default")
+  L.call.names:Click()
+  H.ok(dN.shareHidden == false and strip(L.call.names.word._text) == "NAMES ON", "one click: names go on the card")
+  L.call.names:Click()
+  H.ok(dN.shareHidden == true and strip(L.call.names.word._text) == "NAMES OFF", "another: off again")
+  dN.shareHidden = wasHidden
   L.Hide()
   NS.Slash("share")
   H.ok(back:IsShown() and S.entry == boss, "/bism share: the newest memory (the share cards themselves are not memories)")
@@ -3803,6 +3821,7 @@ end)()
   pops(f.share, "the journal's SHARE key")
   L.Show()
   pops(L.call.share, "the lounge's SHARE key")
+  pops(L.call.names, "the lounge's NAMES key")
   L.Hide()
   local ow = NS.CFG.Build()
   local shareRow
