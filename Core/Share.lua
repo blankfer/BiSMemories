@@ -253,9 +253,13 @@ local function buildSeat(t)
   -- the window's box: the dusk sky in bands, the ground, the shade pulled down a little - and the postcard; it cuts
   -- whatever reaches past it
   local o = S.OVAL
+  -- LEVELS COUNT FROM THE TICKET'S OWN (Arn's first card, 8 Nov: a blank seat). The ticket sits at 22; a window set to a
+  -- flat 5 (the lounge's numbers, where the room is at 2) drew UNDER the ticket's seat paper - sky, you and the oval all
+  -- hidden behind it. Every frame here is the ticket's level plus a step.
+  local base = t:GetFrameLevel()
   local w = CreateFrame("Frame", nil, t)
   at(w, t, o[1], o[2], o[3], o[4])
-  w:SetFrameLevel(5)
+  w:SetFrameLevel(base + 1)
   if w.SetClipsChildren then w:SetClipsChildren(true) end
   S.window = w
   local skyH = o[4] * L.GROUND
@@ -274,14 +278,14 @@ local function buildSeat(t)
   at(paper(w, "ARTWORK", "shadeEdge"), w, 0, o[4] * 0.12, o[3], 0.15)
   local post = CreateFrame("Frame", nil, w)
   at(post, w, 0, 0, o[3], o[4])
-  post:SetFrameLevel(6)
+  post:SetFrameLevel(base + 2)
   post.own = true                                         -- a memory of its own, not the journal's chosen one
   post.you = CreateFrame("DressUpModel", nil, post)
   at(post.you, post, 0.5, 4.0, 8.0, 17.5)
-  post.you:SetFrameLevel(7)
+  post.you:SetFrameLevel(base + 3)
   post.them = CreateFrame("DressUpModel", nil, post)
   at(post.them, post, 4.5, 9.5, 10.5, 12)
-  post.them:SetFrameLevel(7)
+  post.them:SetFrameLevel(base + 3)
   post.note = word(S.fonts, post, L.FONT.body, 0.7, S.COLOUR.paper, "CENTER")   -- J.Postcard writes it; a card never
   post.note:SetPoint("TOP", post, "TOP", 0, -px(3))
   S.post = post
@@ -289,7 +293,7 @@ local function buildSeat(t)
   -- over the models, so nothing of them shows past the oval
   local ov = CreateFrame("Frame", nil, t)
   at(ov, t, o[1] - S.RIM, o[2] - S.RIM, o[3] + 2 * S.RIM, o[4] + 2 * S.RIM)
-  ov:SetFrameLevel(12)
+  ov:SetFrameLevel(base + 8)
   ov.art = ov:CreateTexture(nil, "ARTWORK")
   ov.art:SetTexture(L.MEDIA .. "oval")
   ov.art:SetAllPoints()
@@ -299,7 +303,7 @@ end
 local function buildMain(t)
   local f = S.f
   local x, w, C, FT = S.MAIN_X, S.MAIN_W, S.COLOUR, L.FONT
-  -- words on the ticket's own frame sit under the oval's (frame level 12): the stub and the middle never meet it
+  -- words on the ticket's own frame sit under the oval's (the ticket's level + 8): the stub and the middle never meet it
   f.brand = box(word(S.fonts, t, FT.display, 2.0, C.sky), t, x, 2.2, 20)
   f.head = box(word(S.fonts, t, FT.body, 0.95, C.muted, "RIGHT"), t, x + 20, 2.9, w - 20)
   f.title = box(word(S.fonts, t, FT.display, S.TITLE_EM[1], C.ink), t, x, 4.7, w)
