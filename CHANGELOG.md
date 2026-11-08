@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Share cards: a memory as one picture to post anywhere.** Press SHARE on the journal or in the lounge (or type `/bism share`, or `/bism share 3` for an older one). For a moment the whole screen becomes that memory's boarding pass, big and alone: the boss, where and when, how long it took, who was with you and the loot that dropped. One screenshot, then everything comes back.
+  - **Names hidden, for everyone, from the start.** You show as your class ("A SHAMAN") and your party as "4 friends: rogue, hunter, druid, mage". No realm, no guild, no names. Want them on? `/bism share names on`, or the "share cards" row in the options.
+  - **The loot that dropped.** A boss memory now remembers the items seen in the minute after the kill, and the card lists them.
+  - **Save it from the album page.** A share card shows up cut down to just the ticket, with SAVE IMAGE (a .png in your Downloads) and COPY (where your browser allows it). Save it and post it anywhere.
+  - Never during a fight: it won't start in one, and a fight that starts puts it away at once.
+  - **For other addons:** `BiSMemoriesAPI.ShareCard(owner, card)` and `ShareMemory(owner, index)` (API version 4). The player's names switch applies.
+
 - **The Clipper Lounge: your memories full screen.** Press LOUNGE on the journal (or type `/bism lounge`) and the whole screen becomes a 1960s jetliner lounge. It fits any monitor, laptop to ultrawide, and Escape takes you back.
   - **A departure board across the top.** Your memories are flights on split-flap letters: the time, a flight number (BOS for a boss, LVL for a level, PLC for a new place...), where it was, the zone as the gate, and a remark like FIRST KILL or FASTEST. Turn the page and the letters clatter over, then stop. Click a flight to pick it.
   - **The window seat.** The memory you picked, seen through an oval cabin window at dusk: you, and a boss you killed lying beside you.

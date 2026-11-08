@@ -48,19 +48,41 @@ Read ../_bisdev/CLAUDE.md first.
   the sign, the call pills (`L.call`); the paper route map `L.map` (Map.lua's MV with `panel.paper` / `panel.pal`, dashed
   arcs `L.Arcs` in time order, Lines); the gauges `L.gauges` (`L.Counts`, `L.Angle`, needles = Lines, `L.Swing` once
   on opening). The chosen memory is the journal's `J.sel`. Shut (Escape, X, `PLAYER_REGEN_DISABLED`): OnHide stops
-  the flip, the swing and a drag; it does not open in a fight (`L.InFight`).
+  the flip, the swing and a drag; it does not open in a fight (`L.InFight`). Its SHARE pill (`L.call.share`, in
+  `L.shareRow` beside the sign) and its hands for Share.lua: `L.Px`, `L.At`, `L.Fill`, `L.Word`, `L.Box`, `L.Width`.
+- `Core/Share.lua` (`ns.Share`, `S`): THE SHARE CARD (8 Nov 2026) - `/bism share [n]` (shr), the journal's `f.share` key,
+  the lounge's pill, `S.Take(e)`. `BiSMemoriesShare` = a frame with NO parent (the clean shot fades UIParent, never it),
+  pinned over UIParent at its scale, FULLSCREEN_DIALOG, Escape; the lounge's teal + walnut trim, `S.room` at the lounge's
+  design size `SetScale`d to the largest 16:9 (`S.Size`), the ticket `S.ticket` at `S.TICKET` (the mockup's 7/12 inset):
+  the seat column (`S.window` clips, sky bands, `S.post` = J.Postcard's holder with `post.own`, under our `S.oval` art -
+  Media/oval.tga, dev/art.py), the middle (`S.f`: brand, head, title shrunk to fit `S.TITLE_EM`, the tangerine line
+  `S.Line`, route, `S.FIELDS`, CREW, CARGO), the stub (kind, `S.bars`, place, the BiS> MEMORIES stamp). Words from
+  `S.Fields(e, list, hide)` (L.PassFields underneath; hidden = class only, "4 friends: ..." in `S.CLASS_INK`; cargo names
+  `S.Item`, `S.QUALITY_INK`). Up: the journal / lounge step out (`S.was`), `S.Wait` every `S.STEP` until `S.Ready` (the
+  models drawn, `them.lookedFor` from J.Look) or `S.WAIT_MAX`, `S.Capture` = M.Clean(true) + one Screenshot + the note
+  (reason "share", `crop` = `S.Rect()` fractions, `of`, `hidden`) via `M.Keep`; down on SCREENSHOT_* (`S.Shot`) or
+  `S.BACK` s, OnHide gives the interface back and reopens what stepped out. A fight: refused / closed at once.
+  `shareHidden` (default hidden) is written into every save once by `ns.ADDED` (Init.lua `ns.WriteAdded`, stamp
+  `share1`). Share notes are kept in the log but are not memories: `J.Entries`, the year and on-this-day skip them.
+  API `ShareCard` / `ShareMemory` (version 4) through `S.Card` / `S.Take`.
+- Cargo (Memories.lua, 8 Nov 2026): a boss memory keeps item links seen in the `M.CARGO_FOR` s after it (`M.WatchCargo`,
+  a timer ends it; `M.AddCargo` from CHAT_MSG_LOOT, `M.LootWindow` on LOOT_OPENED), `M.CARGO_MAX` at most.
+- `Album/BiSMemories-Album.html`: a "share" note with a crop (`cropOf`) is drawn as its ticket cut out with a canvas
+  (`shareFigure`, `cutInto`), SAVE IMAGE (`saveCard`, toDataURL + download) and COPY (`copyCard`, ClipboardItem, shown
+  only where it exists); a picture opened by relative path cannot be handed over (canvas taint) - `pickCard` asks for it.
 - `UI/Options.lua` (`ns.CFG`): BiSTheme's options window in two columns, the minimap button (kit standard, Minimap
   minor 5: left = journal, right = `CFG.Toggle`, our own options window - right-click again closes it, never the
   game's options) and the BiS> Memories page in the game's options (`CFG.RegisterPage`, at PLAYER_LOGIN). Since 8 Nov
   2026 the page is the kit's dashboard (`T.Dashboard`, Settings minor 3, the family rule): `CFG.Pages()` regroups the
-  window's own rows (`CFG.Sections()` makes the tables ONCE, so both hold the same ones) into ten sections - the
+  window's own rows (`CFG.Sections()` makes the tables ONCE, so both hold the same ones) into eleven sections - the
   camera, milestones, bosses*, loot*, deaths*, out in the world, group photos*, the journal, world-map pins*, the
-  album page (* = a switch of its own, through the row's setter = what `/bism on|off` / `/bism pins` write).
+  album page, share cards (* = a switch of its own, through the row's setter = what `/bism on|off` / `/bism pins` write).
   `CFG.Model()` repaints our window when it is open. The window is never held inside the page; its buttons (journal,
   a picture now, group call) put the game's options away first.
 - Forever 1.0 (7 Nov 2026): `ns.DEFAULTS` = what a NEW install gets (big moments on, extras off); `ns.WAS`
   (Memories.lua) = 0.10.1's values, written once into an EXISTING save by `ns.Forever10` (Init.lua, before `db()`;
-  stamp `forever10`). A per-character mirror alone counts as existing.
+  stamp `forever10`). A per-character mirror alone counts as existing. A setting added AFTER 1.0 goes in `ns.ADDED`
+  ({ stamp, values }) and is written into every save, new and existing, once (`ns.WriteAdded`, right after Forever10).
 - `Libs/`: embedded `BiSTheme/Console.lua`, `Options.lua`, `Minimap.lua`, `Settings.lua` and `LibBiSComm-1.0` — copies, see
   `../_bisdev/CLAUDE.md`. Since 0.9.0 also `LibStub`, `CallbackHandler-1.0`, `HereBeDragons` (BSD), BiS
   Tools' copies byte for byte - `Libs/THIRD-PARTY.txt`. The suites compile HereBeDragons, never run it.
