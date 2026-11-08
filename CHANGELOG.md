@@ -7,6 +7,8 @@
 - **Share cards: a memory as one picture to post anywhere.** Press SHARE on the journal or in the lounge (or type `/bism share`, or `/bism share 3` for an older one). For a moment the whole screen becomes that memory's boarding pass, big and alone: the boss, where and when, how long it took, who was with you and the loot that dropped. One screenshot, then everything comes back.
   - **Names hidden, for everyone, from the start.** You show as your class ("A SHAMAN") and your party as "4 friends: rogue, hunter, druid, mage". No realm, no guild, no names. Want them on? The **NAMES OFF / NAMES ON** key beside SHARE in the lounge flips it with one click (orange when names are on), or `/bism share names on`, or the "share cards" row in the options.
   - **The window seat shows on the card** - you, the boss and the sky in the oval. (On the first try it came out as blank paper.)
+  - **The departure board cuts at whole words** - "THE FANG GROTTO", never "THE FANG GROTTO BE"; "THUNDER", never "THUNDER BLU". A BiS Shell game's flight drops its "ADVENT.EXE:" (REMARKS already says ADVENT).
+  - **ADVENT chapters are not bosses.** They fly as **ADV** flights, their card says CLEARED and their stub ADVENT, and the BOSSES gauge counts real bosses only.
   - **The loot that dropped.** A boss memory now remembers the items seen in the minute after the kill, and the card lists them.
   - **Save it from the album page.** A share card shows up cut down to just the ticket, with SAVE IMAGE (a .png in your Downloads) and COPY (where your browser allows it). Save it and post it anywhere.
   - Never during a fight: it won't start in one, and a fight that starts puts it away at once.

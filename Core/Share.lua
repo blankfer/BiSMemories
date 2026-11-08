@@ -150,7 +150,9 @@ end
 function S.Line(e)
   local d = tostring(e.detail or "")
   local w
-  if e.reason == "boss" then
+  if L.Game(e) then
+    w = "CLEARED"                                          -- a BiS Shell game's chapter, not a boss (8 Nov)
+  elseif e.reason == "boss" then
     w = (d:find("^first kill") and "FIRST KILL") or (d:find("fastest yet", 1, true) and "FASTEST YET") or "BOSS DOWN"
   else
     w = L.KIND[e.reason] or M.Word(e.reason):upper()
