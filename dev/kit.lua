@@ -90,6 +90,8 @@ local function newTexture(owner, layer)
         self._texture = (select(1, ...))
     end
     function t:SetTexCoord() end
+    -- kept (8 Nov 2026, the Clipper Lounge's paper map): "the map art is tinted to paper" was untestable
+    function t:SetDesaturated(v) self._desat = v and true or false end
     function t:Show() self._shown = true end
     function t:Hide() self._shown = false end
     function t:IsShown() return self._shown end
@@ -243,8 +245,20 @@ local function newFrame(ftype, name, parent)
     function fr:GetFrameLevel() return self._level or 0 end
     function fr:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
     function fr:GetNumPoints() return 1 end
-    function fr:Show() self._shown = true end
-    function fr:Hide() self._shown = false end
+    -- SHOWING AND HIDING RUN OnShow / OnHide, AS THE CLIENT DOES (8 Nov 2026, the Clipper Lounge). Escape hides a
+    -- frame in UISpecialFrames with a bare :Hide() - its OnHide is the only thing that runs. This mock used to set a
+    -- flag and nothing else, so "Escape stops whatever was ticking" could only be tested through the addon's own
+    -- Hide function, which Escape never calls. Only a CHANGE runs the script (a hidden frame hidden again does not).
+    function fr:Show()
+        local was = self._shown
+        self._shown = true
+        if not was and self._scripts.OnShow then self._scripts.OnShow(self) end
+    end
+    function fr:Hide()
+        local was = self._shown
+        self._shown = false
+        if was and self._scripts.OnHide then self._scripts.OnHide(self) end
+    end
     function fr:IsShown() return self._shown end
     function fr:SetShown(v) if v then self:Show() else self:Hide() end end   -- the client's frames have it
     function fr:IsVisible()
@@ -258,10 +272,40 @@ local function newFrame(ftype, name, parent)
     end
     function fr:CreateTexture(_, layer) local t = newTexture(self, layer); self._regions = self._regions or {}; table.insert(self._regions, t); return t end
     function fr:CreateFontString(_, _, template) local f = newFontString(self, template); self._regions = self._regions or {}; table.insert(self._regions, f); return f end
+    -- A LINE (8 Nov 2026, the Clipper Lounge's needles and route arcs), as the client draws one: a texture whose two
+    -- ends are pinned (SetStartPoint / SetEndPoint: a point, a region, x, y) with a thickness. SetColorTexture is
+    -- ACCEPTED AND DRAWS NOTHING on a Line (bislint `line-paint`, solved.md 14 Oct: bounce lines invisible for four
+    -- release candidates) - the mock keeps `_drawsNothing` so a suite can see it; a Line is painted with
+    -- SetTexture(WHITE8X8) + SetVertexColor.
+    function fr:CreateLine(_, layer)
+        local l = newTexture(self, layer)
+        l._line = true
+        function l:SetColorTexture() self._drawsNothing = true end
+        function l:SetStartPoint(point, rel, x, y)
+            if type(rel) ~= "table" then error("SetStartPoint needs (point, region, x, y)", 0) end
+            self._from = { point = point, rel = rel, x = x or 0, y = y or 0 }
+        end
+        function l:SetEndPoint(point, rel, x, y)
+            if type(rel) ~= "table" then error("SetEndPoint needs (point, region, x, y)", 0) end
+            self._to = { point = point, rel = rel, x = x or 0, y = y or 0 }
+        end
+        function l:SetThickness(n)
+            if not isnum(n) then error("SetThickness needs a number", 0) end
+            self._thick = n
+        end
+        self._regions = self._regions or {}
+        table.insert(self._regions, l)
+        return l
+    end
+    -- kept (8 Nov 2026): "the 3D models never draw past the cabin window" was untestable while this answered silence
+    function fr:SetClipsChildren(v) self._clips = v and true or false end
+    function fr:DoesClipChildren() return self._clips or false end
     function fr:SetScript(k, fn) self._scripts[k] = fn end
     function fr:GetScript(k) return self._scripts[k] end
     function fr:HookScript(k, fn) self._scripts["hook_" .. k] = fn end
     function fr:RegisterEvent(e) self._events[e] = true end
+    -- the client stops delivering an event to a frame that unregistered it; the catch-all kept delivering it
+    function fr:UnregisterEvent(e) self._events[e] = nil end
     function fr:UnregisterAllEvents() self._events = {} end
     function fr:Fire(script, ...) local fn = self._scripts[script]; if fn then return fn(self, ...) end end
     function fr:Click(button) return self:Fire("OnClick", button or "LeftButton") end
