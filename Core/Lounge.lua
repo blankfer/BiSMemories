@@ -190,6 +190,29 @@ function L.Name(e)
   return s
 end
 
+--- A BiS Shell game's memory ("ADVENT.EXE: the Fang Grotto beaten"): the game's word, "ADVENT"; nil for anything else.
+--- Read off the words, not `e.from`, so notes kept before `from` existed are known too. (Arn, 8 Nov: the chapters were
+--- filed as BOS flights and counted as bosses.)
+function L.Game(e)
+  if type(e) ~= "table" then return nil end
+  return tostring(e.detail or ""):match("^(%u+)%.EXE")
+end
+
+--- What it was, for the board: the name without its "ADVENT.EXE: " - REMARKS already says which game.
+function L.BoardName(e)
+  return (L.Name(e):gsub("^%u+%.EXE:%s*", ""))
+end
+
+--- Cut to `n` letters at a WHOLE WORD (Arn, 8 Nov: "THE FANG GROTTO BE", "THUNDER BLU"); one word longer than `n` is
+--- cut where it must. Commas and colons left hanging at the end go too.
+function L.Fit(s, n)
+  s = tostring(s or "")
+  if #s <= n then return s end
+  local head = s:sub(1, n)
+  if s:sub(n + 1, n + 1) ~= " " then head = head:match("^(.*%S)%s+%S*$") or head end
+  return (head:gsub("[%s,:;%-]+$", ""))
+end
+
 function L.ZoneMain(z) z = tostring(z or "") return z:match("^(.-)%s+%-%s+") or z end
 function L.ZoneSub(z) return tostring(z or ""):match("%s+%-%s+(.+)$") end
 
@@ -213,7 +236,8 @@ function L.Flights(list)
   local n, out = {}, {}
   for i = #list, 1, -1 do
     local e = list[i]
-    local code = L.CODE[e.reason] or "MEM"
+    local game = L.Game(e)
+    local code = game and game:sub(1, 3) or L.CODE[e.reason] or "MEM"     -- ADVENT's chapters fly ADV, not BOS
     n[code] = (n[code] or 0) + 1
     out[e] = code .. " " .. n[code]
   end
@@ -238,8 +262,8 @@ end
 
 --- A flight's five cells on the board.
 function L.Cells(e, chosen, flights)
-  return { when(e.at, "%H:%M"), (flights and flights[e]) or (L.CODE[e.reason] or "MEM"), L.Name(e):upper(),
-           L.ZoneMain(e.zone):upper(), L.Remark(e, chosen) }
+  return { when(e.at, "%H:%M"), (flights and flights[e]) or (L.CODE[e.reason] or "MEM"),
+           L.Fit(L.BoardName(e):upper(), L.TILES[3]), L.Fit(L.ZoneMain(e.zone):upper(), L.TILES[4]), L.Remark(e, chosen) }
 end
 
 --- The pages: L.ROWS memories each, newest first.
@@ -295,7 +319,7 @@ function L.PassFields(e, list, opts)
   f.gate = L.ZoneMain(e.zone):upper()
   local n = type(e.with) == "table" and #e.with or 0
   f.party = n > 0 and tostring(n) or "SOLO"
-  f.kind = L.KIND[e.reason] or M.Word(e.reason):upper()
+  f.kind = L.Game(e) or L.KIND[e.reason] or M.Word(e.reason):upper()
   f.file = e.file and tostring(e.file):gsub("_", "\n") or "NO PICTURE"
   f.seed = tonumber(e.at) or 1
   return f
@@ -347,7 +371,7 @@ function L.Counts(list)
   local c = { bosses = 0, level = 0, places = 0, deaths = 0, kept = #list }
   local bosses, places = {}, {}
   for _, e in ipairs(list) do
-    if e.reason == "boss" then
+    if e.reason == "boss" and not L.Game(e) then           -- a game's chapter is not a boss (Arn, 8 Nov)
       local name = M.BossName(e) or L.Name(e)
       if not bosses[name] then bosses[name] = true c.bosses = c.bosses + 1 end
     elseif e.reason == "death" then
