@@ -46,7 +46,7 @@ function M.OnThisDayPick(t)
   t = t or now()
   local best, words, bestYear
   for _, e in ipairs(M.Log()) do
-    local w = type(e) == "table" and M.Ago(tonumber(e.at), t)
+    local w = type(e) == "table" and e.reason ~= "share" and M.Ago(tonumber(e.at), t)   -- a share card is no memory
     if w then
       local yearly = w:find("year", 1, true) ~= nil
       local better = not best
@@ -87,7 +87,7 @@ function M.Summary(year, char)
   for _, e in ipairs(M.Log()) do
     local at = tonumber(e.at) or 0
     local y = date and tonumber(date("%Y", at)) or 0
-    if y == year and (not char or e.char == nil or e.char == char) then   -- an unclaimed old note: the journal shows it too
+    if y == year and e.reason ~= "share" and (not char or e.char == nil or e.char == char) then   -- an unclaimed old note: the journal shows it too
       s.total = s.total + 1
       s.kinds[e.reason or "?"] = (s.kinds[e.reason or "?"] or 0) + 1
       if e.reason == "boss" and tostring(e.detail or ""):find("^first kill: ") then

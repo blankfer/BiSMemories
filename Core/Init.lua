@@ -178,6 +178,26 @@ function ns.Forever10(acct, char)
   return "frozen"
 end
 
+--- A SETTING ADDED AFTER 1.0 IS WRITTEN, NEVER READ OFF NIL (8 Nov 2026, the share card's `shareHidden` first). Each
+--- `ns.ADDED` row = { stamp = "name", values = { key = value } }: once per save - a new install AND an existing one -
+--- every value the save has nothing for is written in, and the stamp set, so a player's own choice later is never
+--- overwritten. Runs after ns.Forever10, before db(). Answers how many rows it wrote.
+ns.ADDED = {}
+function ns.WriteAdded()
+  BiSMemoriesDB = type(BiSMemoriesDB) == "table" and BiSMemoriesDB or {}
+  local d, n = BiSMemoriesDB, 0
+  for _, a in ipairs(ns.ADDED) do
+    if not d[a.stamp] then
+      for k, v in pairs(a.values) do
+        if d[k] == nil then d[k] = v end
+      end
+      d[a.stamp] = true
+      n = n + 1
+    end
+  end
+  return n
+end
+
 -- the shared BiS channel: no setting of this addon may gate it; only /biscomm off does,
 -- and that choice survives a logout here
 ns.Comm = {}
@@ -211,6 +231,7 @@ f:SetScript("OnEvent", function(_, event, name)
     local acct0, char0 = BiSMemoriesDB, BiSMemoriesCharDB   -- as the client handed them back
     ns.rescued = ns.MirrorIn()                       -- before db(), so the log is there to find
     ns.firstRun = ns.Forever10(acct0, char0)         -- before db() too: a new install, or an old save frozen
+    ns.WriteAdded()                                  -- the settings added since 1.0, written in once
     db()
     ns.Comm.Boot()
     if ns.M and ns.M.Start then ns.M.Start() end     -- the camera, once the DB exists

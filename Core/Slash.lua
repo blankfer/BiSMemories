@@ -18,6 +18,8 @@
                                 Core/Journal.lua for why that is not a Forever thing.
       /bism lounge              the Clipper Lounge: the journal FULL SCREEN (a departure board, the window
                                 seat, the boarding pass, the route map, the gauges) - Core/Lounge.lua
+      /bism share [n]           a share card: the newest memory (or the n-th) as one picture to post - Core/Share.lua
+      /bism share names on|off  names on the card, or hidden (hidden unless you say otherwise)
       /bism map                 the journal's map: a dot where each memory was taken
       /bism year [all]          what this year's notes add up to (all: every character)
       /bism group [secs]        a group photo: a countdown for everyone with a BiS addon
@@ -29,7 +31,7 @@
 
   Every command longer than 4 letters has a short word too (ns.SHORT, 6 Nov 2026): sound = snd,
   clear = clr, zones = zone, status = stat, heard = hear, journal = book, options = opt, group = grp,
-  onthisday = otd, every = each, clean = cln, lounge = lng; where = path, clipper = lounge. The long
+  onthisday = otd, every = each, clean = cln, lounge = lng, share = shr; where = path, clipper = lounge. The long
   names keep working.
 
   Reading it back matters as much as taking it: the note names the file the client wrote, so a
@@ -161,7 +163,8 @@ end
 -- or a habit never breaks. `ns.SHORT` is long -> short (the help shows it); `ns.SLASH_WORD` is every other
 -- word a command answers to -> its long name.
 ns.SHORT = { sound = "snd", clear = "clr", zones = "zone", status = "stat", heard = "hear", journal = "book",
-             options = "opt", group = "grp", onthisday = "otd", every = "each", clean = "cln", lounge = "lng" }
+             options = "opt", group = "grp", onthisday = "otd", every = "each", clean = "cln", lounge = "lng",
+             share = "shr" }
 ns.SLASH_WORD = { places = "zones", album = "journal", config = "options", settings = "options", cheese = "group",
                   where = "path", clipper = "lounge" }
 for long, short in pairs(ns.SHORT) do ns.SLASH_WORD[short] = long end
@@ -265,6 +268,26 @@ function ns.Slash(input)
   elseif cmd == "lounge" then            -- also clipper, lng: the Clipper Lounge, the journal full screen
     if ns.Lounge then ns.Lounge.Toggle() else ns.Print("the lounge is not loaded") end
 
+  -- A SHARE CARD (8 Nov 2026, Share.lua): the newest memory (or the n-th newest) as one picture to post anywhere
+  elseif cmd == "share" then             -- also shr
+    local a, b = rest:lower():match("^(%S*)%s*(%S*)")
+    if a == "names" then
+      if b == "on" then db().shareHidden = false elseif b == "off" then db().shareHidden = true end
+      ns.Print("share cards: names %s", db().shareHidden == false and T.text("warn", "shown")
+        or T.text("good", "hidden") .. T.text("muted", " - you are your class, your party their classes"))
+    elseif not ns.Share then
+      ns.Print("the share card is not loaded")
+    else
+      local n = tonumber(a) or 1
+      local e = ns.Share.Newest(n)
+      if not e then
+        ns.Print("no memory %d to share - /bism lists them, newest first", n)
+      else
+        local ok, why = ns.Share.Take(e)
+        if not ok and why ~= "in combat" then ns.Print("no share card - %s", tostring(why)) end
+      end
+    end
+
   elseif cmd == "map" then
     if ns.J then ns.J.Tab("map") ns.J.Show() end
 
@@ -339,7 +362,7 @@ function ns.Slash(input)
   else
     -- the short word beside each long one, in brackets: "sound (snd)"
     ns.Print("%s", T.text("muted",
-      "/bism · all · now [note] · journal (book) · lounge (lng) · map · year [all] · group (grp) · options (opt) · on|off <thing>"
+      "/bism · all · now [note] · journal (book) · lounge (lng) · share (shr) [n] · map · year [all] · group (grp) · options (opt) · on|off <thing>"
       .. " · every (each) boss|death · pins mine|all|off · onthisday (otd) · clean (cln) · loot <2-5> · gap <secs>"
       .. " · sound (snd) · clear (clr) · zones (zone) · status (stat) · heard (hear) · path · db"))
   end

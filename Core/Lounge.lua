@@ -59,8 +59,10 @@ L.WIN = { 3, 21.3, 24, 29.2 }        -- the window's hole (dev/art.py WIN_W x WI
 L.RIM = 2.7                          -- the surround art reaches this far past the hole (dev/art.py: 1.1 + 0.4 + 1.2)
 L.PASS = { 30.5, 20.5, 37, 17 }
 L.CARD = { 31, 39.4, 36, 6.0 }
-L.SIGN = { 31, 46.4, 26, 2.4 }
+L.SIGN = { 31, 46.4, 18.4, 2.4 }    -- shorter since the NAMES key (8 Nov), and so no weekday: "FASTEN SEATBELT · 07 NOV"
 L.CALL = { 31, 50.9, 37.2, 2.9 }
+L.SHARE = { 50.2, 46.3, 18.0, 2.6 }  -- the NAMES key and the SHARE pill, beside the lit sign (Share.lua)
+L.NAMES_W, L.SHARE_X = 7.4, 8.2      -- inside that row: NAMES ON|OFF from 0, SHARE from 8.2 (9.8 wide, as before)
 L.MAP = { 69, 20.2, 29, 21.5 }
 L.FE = { 69, 43, 29, 9.6 }
 
@@ -167,6 +169,9 @@ local function width(s, size)
   return w * size
 end
 
+-- the same hands for the share card (Share.lua), which draws in the lounge's units and faces
+L.Px, L.At, L.Fill, L.Art, L.Word, L.Box, L.Width = px, at, fill, art, word, box, width
+
 --- UTF-8 characters, one a tile (an accented name is one tile, not two).
 local function chars(s)
   local out = {}
@@ -183,6 +188,29 @@ function L.Name(e)
   s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1"):gsub("[%[%]]", "")
   if e.reason == "boss" then s = s:gsub("^first kill: ", ""):gsub(" %- fastest yet.*$", "") end
   return s
+end
+
+--- A BiS Shell game's memory ("ADVENT.EXE: the Fang Grotto beaten"): the game's word, "ADVENT"; nil for anything else.
+--- Read off the words, not `e.from`, so notes kept before `from` existed are known too. (Arn, 8 Nov: the chapters were
+--- filed as BOS flights and counted as bosses.)
+function L.Game(e)
+  if type(e) ~= "table" then return nil end
+  return tostring(e.detail or ""):match("^(%u+)%.EXE")
+end
+
+--- What it was, for the board: the name without its "ADVENT.EXE: " - REMARKS already says which game.
+function L.BoardName(e)
+  return (L.Name(e):gsub("^%u+%.EXE:%s*", ""))
+end
+
+--- Cut to `n` letters at a WHOLE WORD (Arn, 8 Nov: "THE FANG GROTTO BE", "THUNDER BLU"); one word longer than `n` is
+--- cut where it must. Commas and colons left hanging at the end go too.
+function L.Fit(s, n)
+  s = tostring(s or "")
+  if #s <= n then return s end
+  local head = s:sub(1, n)
+  if s:sub(n + 1, n + 1) ~= " " then head = head:match("^(.*%S)%s+%S*$") or head end
+  return (head:gsub("[%s,:;%-]+$", ""))
 end
 
 function L.ZoneMain(z) z = tostring(z or "") return z:match("^(.-)%s+%-%s+") or z end
@@ -208,7 +236,8 @@ function L.Flights(list)
   local n, out = {}, {}
   for i = #list, 1, -1 do
     local e = list[i]
-    local code = L.CODE[e.reason] or "MEM"
+    local game = L.Game(e)
+    local code = game and game:sub(1, 3) or L.CODE[e.reason] or "MEM"     -- ADVENT's chapters fly ADV, not BOS
     n[code] = (n[code] or 0) + 1
     out[e] = code .. " " .. n[code]
   end
@@ -233,8 +262,8 @@ end
 
 --- A flight's five cells on the board.
 function L.Cells(e, chosen, flights)
-  return { when(e.at, "%H:%M"), (flights and flights[e]) or (L.CODE[e.reason] or "MEM"), L.Name(e):upper(),
-           L.ZoneMain(e.zone):upper(), L.Remark(e, chosen) }
+  return { when(e.at, "%H:%M"), (flights and flights[e]) or (L.CODE[e.reason] or "MEM"),
+           L.Fit(L.BoardName(e):upper(), L.TILES[3]), L.Fit(L.ZoneMain(e.zone):upper(), L.TILES[4]), L.Remark(e, chosen) }
 end
 
 --- The pages: L.ROWS memories each, newest first.
@@ -290,7 +319,7 @@ function L.PassFields(e, list, opts)
   f.gate = L.ZoneMain(e.zone):upper()
   local n = type(e.with) == "table" and #e.with or 0
   f.party = n > 0 and tostring(n) or "SOLO"
-  f.kind = L.KIND[e.reason] or M.Word(e.reason):upper()
+  f.kind = L.Game(e) or L.KIND[e.reason] or M.Word(e.reason):upper()
   f.file = e.file and tostring(e.file):gsub("_", "\n") or "NO PICTURE"
   f.seed = tonumber(e.at) or 1
   return f
@@ -342,7 +371,7 @@ function L.Counts(list)
   local c = { bosses = 0, level = 0, places = 0, deaths = 0, kept = #list }
   local bosses, places = {}, {}
   for _, e in ipairs(list) do
-    if e.reason == "boss" then
+    if e.reason == "boss" and not L.Game(e) then           -- a game's chapter is not a boss (Arn, 8 Nov)
       local name = M.BossName(e) or L.Name(e)
       if not bosses[name] then bosses[name] = true c.bosses = c.bosses + 1 end
     elseif e.reason == "death" then
@@ -706,6 +735,36 @@ local function buildCall(room)
     if not ok then ns.Print("no group photo - %s", tostring(why)) end
   end)
   L.call.journal = pill(c, "JOURNAL", 28.8, 8.4, function() L.ToJournal() end)
+  -- SHARE (8 Nov 2026): the chosen memory as a share card - its boarding pass big and alone, one picture (Share.lua)
+  local s = CreateFrame("Frame", nil, room)
+  at(s, room, L.SHARE[1], L.SHARE[2], L.SHARE[3], L.SHARE[4])
+  L.shareRow = s
+  L.call.share = pill(s, "SHARE", L.SHARE_X, L.SHARE[3] - L.SHARE_X,
+    function() if ns.Share and J.sel then ns.Share.Take(J.sel) end end)
+  L.call.share.popIf = function() return J.sel ~= nil end
+  -- NAMES ON | OFF (Arn, 8 Nov, on the lounge: "option should be here to hide or share names"): the share card's privacy
+  -- switch where the card is taken - the same `shareHidden` as `/bism share names` and the options row. OFF (the
+  -- default) = you are your class, your party their classes; ON in tangerine, because names are going out.
+  L.call.names = pill(s, "NAMES OFF", 0, L.NAMES_W, function()
+    local d = ns.DB()
+    d.shareHidden = not L.NamesHidden()
+    L.PaintNames()
+  end)
+end
+
+--- True when the share card keeps names off (anything but a plain "names on" - Share.lua reads it the same way).
+function L.NamesHidden()
+  local d = ns.DB and ns.DB()
+  return not (type(d) == "table" and d.shareHidden == false)
+end
+
+function L.PaintNames()
+  local b = L.call and L.call.names
+  if not b then return end
+  local hidden = L.NamesHidden()
+  b.word:SetText(hidden and "NAMES OFF" or "NAMES ON")
+  local r, g, bl = L.Rgb(hidden and "ink" or "tangerine")
+  b.word:SetTextColor(r, g, bl)
 end
 
 local function buildMap(room)
@@ -825,7 +884,7 @@ function L.Build()
   buildMap(room)
   L.fe = buildGauges(room)
   L.parts = { board = L.board, seat = L.seat, surround = L.surround, pass = L.pass.frame, card = L.card.frame,
-              sign = L.sign.frame, call = L.call.frame, map = L.paper, gauges = L.fe }
+              sign = L.sign.frame, call = L.call.frame, share = L.shareRow, map = L.paper, gauges = L.fe }
   -- ESCAPE CLOSES IT (the family's rule); a FIGHT closes it at once
   if UISpecialFrames then table.insert(UISpecialFrames, "BiSMemoriesLounge") end
   back:SetScript("OnEvent", function(_, event)
@@ -1017,7 +1076,7 @@ function L.PaintCard()
   local v = L.CardFields(e, { room = c.line.room * 2 * 0.88, size = c.line.pt })
   L.Put(c.title, v.title)
   c.line:SetText(v.line)                       -- fitted name by name in CardFields, colours kept
-  L.Put(L.sign.text, "FASTEN SEATBELT · " .. (e and when(e.at, "%a %d %b"):upper() or "--"))
+  L.Put(L.sign.text, "FASTEN SEATBELT · " .. (e and when(e.at, "%d %b"):upper() or "--"))   -- no weekday: the NAMES key took its room
 end
 
 --- The memory `by` steps older (+1) or newer (-1) than the chosen one, or nil.
@@ -1029,6 +1088,7 @@ end
 function L.PaintCall()
   L.call.earlier:SetAlpha(L.Neighbour(1) and 1 or 0.45)
   L.call.later:SetAlpha(L.Neighbour(-1) and 1 or 0.45)
+  L.PaintNames()
 end
 
 --- THE ROUTE: dashed arcs joining the memories on the map in the order they happened (the newest L.ARCS legs). Each

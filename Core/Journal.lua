@@ -146,12 +146,13 @@ function J.SetWow(path)
   return d.wowPath
 end
 
---- The memories on show: this character's, or every character's (J.everyone).
+--- The memories on show: this character's, or every character's (J.everyone). A share card (Share.lua) is a picture
+--- OF a memory, kept in the album for its page, never a memory of its own here.
 function J.Entries()
   local log, out = M.Log(), {}
   local me = M.Me()
   for _, e in ipairs(log) do
-    if J.everyone or e.char == nil or e.char == me then out[#out + 1] = e end
+    if e.reason ~= "share" and (J.everyone or e.char == nil or e.char == me) then out[#out + 1] = e end
   end
   return out
 end
@@ -427,6 +428,24 @@ local function build()
   end)
   f.who:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
   J.Pop(f.who, f.who.word)
+
+  -- SHARE (8 Nov 2026): the chosen memory as a share card - the boarding pass big and alone, one picture to post
+  -- (Share.lua). Over the right display, which holds the memory it shares.
+  f.share = key(f, 110, J.KEY_H, "SHARE", function() if ns.Share and J.sel then ns.Share.Take(J.sel) end end)
+  f.share:SetPoint("TOPLEFT", f, "TOPLEFT", J.DISP_X2 + J.DISP_W - 110, -J.KEY_Y)
+  f.share.popIf = function() return J.sel ~= nil end
+  f.share:SetScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("share card")
+    GameTooltip:AddLine("this memory as a picture to post anywhere - the boarding pass, big and alone", 0.8, 0.8, 0.8)
+    local d = ns.DB and ns.DB()
+    GameTooltip:AddLine((type(d) == "table" and d.shareHidden == false) and "names shown - /bism share names off hides them"
+      or "names hidden - /bism share names on shows them", 0.7, 0.7, 0.7)
+    GameTooltip:Show()
+  end)
+  f.share:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  J.Pop(f.share, f.share.word)
 
   ------------------------------------------------ the two displays
   f.left = display(f, J.DISP_X)
@@ -753,6 +772,28 @@ function J.Codex(npc)
   return (disp and disp > 0) and disp or nil
 end
 
+--- A DUNGEON BOSS BY ITS NAME (Arn, 8 Nov 2026: "this shows the boss from adventure the ones from acutal dungeon dont").
+--- Inside a dungeon the game hides the creature's id at the kill, so the memory keeps only the name - and a name draws
+--- nothing. BiS Tools' boss finder knows the face by name (BiSToolsAPI 6 `BossFace`: the one it met there, else the
+--- Codex's boss). An npc id found is kept as the boss's face (`db.faces`, M.Face's own book), so it is asked once.
+--- Never a game's chapter (ADVENT's have their own display), never required. -> npc, display (either may be nil).
+function J.BossFace(e)
+  if type(e) ~= "table" or e.reason ~= "boss" then return nil end
+  local name = M.BossName(e)                             -- nil for a BiS Shell game's chapter
+  local A = _G.BiSToolsAPI
+  if not (name and type(A) == "table" and A.major == 1 and type(A.BossFace) == "function") then return nil end
+  local ok, npc, disp = pcall(A.BossFace, name)
+  if not ok then return nil end
+  npc, disp = tonumber(npc), tonumber(disp)
+  if npc then
+    local d = ns.DB()
+    d.faces = type(d.faces) == "table" and d.faces or {}
+    d.faces[name] = npc
+    M.faceless = nil
+  end
+  return npc, (disp and disp > 0) and disp or nil
+end
+
 --- The creature's look, once it has drawn: a boss lies dead (J.DEAD - the death animation where the client has no
 --- "dead" pose), anyone else stands; and the camera, which a new model resets, so it is set only now.
 function J.Look(m, e)
@@ -767,6 +808,7 @@ function J.Look(m, e)
   pcall(m.SetAnimation, m, anim)
   pcall(m.SetPortraitZoom, m, 0)
   pcall(m.SetCamDistanceScale, m, J.BOSS_CAM)
+  m.lookedFor = e                                        -- drawn and posed: the share card waits for this
 end
 
 --- Ask the client for the creature: its model (display id) when known, else the creature by npc id - and look again
@@ -783,7 +825,8 @@ function J.Ask(m, e, body, tries)
   end
   local token = m.askToken                               -- the model's own: a newer postcard in it makes this one stale
   C_Timer.After(J.LOAD_WAIT, function()
-    if m.askToken ~= token or J.sel ~= e or not m:IsShown() then return end
+    -- the memory still open: the journal's chosen one, or the one a postcard of its own holds (the share card's)
+    if m.askToken ~= token or (m.forEntry or J.sel) ~= e or not m:IsShown() then return end
     if J.Drawn(m) then return J.Look(m, e) end
     if tries >= J.LOAD_TRIES then return end
     if tries == 2 and body.display and body.npc then body = { npc = body.npc } end   -- the model would not: the creature
@@ -796,7 +839,8 @@ end
 --- you. Only your own memories draw you: an addon can draw the character you are playing, not one who is logged out.
 --- Asked once per memory opened (a page turn or a new note does not ask the client again).
 --- `p`: the postcard to draw in - the journal's (the default), or any frame holding `you` and `them` (DressUpModels)
---- and a `note` label: the Clipper Lounge's window seat draws through this same function (Lounge.lua).
+--- and a `note` label: the Clipper Lounge's window seat draws through this same function (Lounge.lua). `p.own`: the
+--- postcard holds a memory of its own, not the journal's chosen one (the share card, Share.lua).
 function J.Postcard(e, p)
   p = p or (J.frame and J.frame.post)
   if not p then return end
@@ -804,6 +848,8 @@ function J.Postcard(e, p)
   p.postFor = e
   local you, them = p.you, p.them
   them.askToken = (them.askToken or 0) + 1
+  them.forEntry = p.own and e or nil
+  them.lookedFor = nil
   -- only the character who took it: an old note nobody has claimed yet (M.ClaimOld) draws nobody
   local mine = type(e) == "table" and e.char == M.Me()
   p.note:SetText("")
@@ -829,6 +875,7 @@ function J.Postcard(e, p)
   local npc = M.Face(e)
   local display = type(e) == "table" and tonumber(e.display) or nil
   if display and display <= 0 then display = nil end
+  if not npc and not display then npc, display = J.BossFace(e) end
   if npc and not display then display = J.Codex(npc) end
   if npc or display then
     them:Show()                                          -- shown first: a hidden model loads nothing
