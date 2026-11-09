@@ -1,4 +1,4 @@
-# BiS Memories — CurseForge page text (1.0.0)
+# BiS Memories — CurseForge page text (1.1.0)
 
 Paste everything below the line into the project description
 (CurseForge → BiS>Memories, project 1701857 → Edit → Description), in the Markdown editor.
@@ -9,6 +9,10 @@ Changed since the previous text (8 Nov, 1.0.0 - Forever 1.0): the options page i
 **BiS>**; the minimap button's two clicks (left = journal, right = options window, again closes it); existing
 players keep every switch; the world-map pins are a camera viewfinder and start off; "others can call one" for
 group photos.
+9 Nov 2026, 1.1.0: "The journal, in game" rewritten for the glass cockpit (keys, six a page, the boss
+lying beside you, the zooming map); new sections "The Clipper Lounge" and "Share cards"; the album's night
+flight look; `/bism lounge` and `/bism share` in the table. Pictures for the gallery (other players' names
+blurred): `C:\Users\arnol\Pictures\BiS-CF\2026-11-09\memories-*.jpg`.
 In the house voice (`_bisdev/docs/voice.md`): the opener talks; lists and tables stay flat.
 
 ---
@@ -38,7 +42,7 @@ Every one is a switch in the options. A new install starts with the big moments 
 
 ## Your album
 
-A page comes with the addon that turns your Screenshots folder into an album, each picture with its story.
+A page comes with the addon that turns your Screenshots folder into an album, each picture with its story. It's a night flight: a cockpit windscreen on a neon sunset over the grid, every picture in its own glass screen, the search a flight computer's green scratchpad.
 
 1. In game, `/bism journal`. The box at the bottom holds the album's address: click it, press Ctrl+C, then **Windows key + R**, Ctrl+V and Enter.
 2. Press **Choose your WoW folder** once. Your browser asks to "upload" thousands of files. Say yes: it means handing them to the page, and nothing leaves your computer.
@@ -48,19 +52,36 @@ Search for a zone, a boss, an item or a friend's name, or click a count to see o
 
 ## The journal, in game
 
-`/bism journal` opens your memories night by night. Click one and you're on a postcard: you in 3D, in what you wore that moment, beside the boss you killed or whoever killed you.
+`/bism journal` opens a jetliner cockpit: two black glass screens, each doing one job in big, easy type. Keys along the top (MEMORIES, MAP, YEAR, and CHARACTER for this one or all of them), six memories a page on the left like a flight computer, and the one you pick on the right: a postcard of you in 3D, in what you wore that moment, with the boss you killed lying at your feet, then where, level, who was with you and how long the fight took.
 
 - **Who was there.** Every picture keeps your group. Click a name to whisper them, invite them again, or add them as a friend or a BiS Tools pal (outside instances).
-- **The map.** Every picture as a dot where it was taken. On the game's world map, each memory can be a pin: a camera viewfinder, four corners in the memory's colour with nothing in the middle, so the quest marker or road under it stays in plain sight. Pins start off - `/bism pins mine` turns them on.
+- **The map.** Every picture as a pin where it was taken. Zoom with the mouse wheel (1x to 16x) and drag to move; pins close together become one box with a count until you zoom in. On the game's world map, each memory can be a pin: a camera viewfinder, four corners in the memory's colour with nothing in the middle, so the quest marker or road under it stays in plain sight. Pins start off - `/bism pins mine` turns them on.
 - **On this day.** Once a day: what happened a year ago today.
 - **The year.** Levels, first kills, new places. `/bism year`.
 - **Group photo.** `/bism group` counts down on everyone's screen, and the whole group takes its picture at the same second. Someone else's call only reaches you when "others can call one" is on.
+
+## The Clipper Lounge
+
+Press LOUNGE on the journal (or `/bism lounge`) and the whole screen becomes a 1960s jetliner lounge. It fits any monitor, laptop to ultrawide.
+
+- **A departure board** of split-flap letters: every memory a flight (BOS for a boss, LVL for a level, PLC for a new place), the zone as its gate, and a remark like FIRST KILL. Turn the page and the letters clatter over.
+- **The window seat:** the memory you picked through an oval cabin window at dusk, you and the boss beside you.
+- **Your boarding pass**, a **paper route map** with dashed lines joining your memories in the order they happened, and **five round gauges** for bosses, level, places, deaths and memories kept.
+- A fight closes it at once, and it won't open during one. Escape takes you back.
+
+## Share cards
+
+Press SHARE (or `/bism share`) and for a moment the whole screen becomes that memory's boarding pass, big and alone: the boss, where and when, how long it took, who was with you and the loot that dropped. One screenshot, then everything comes back. The album page cuts it down to just the ticket, with SAVE IMAGE, ready to post anywhere.
+
+**Names are hidden from the start**: you show as your class, your party as "4 friends: rogue, hunter, druid, mage". The NAMES key in the lounge flips them on.
 
 ## Commands
 
 | | |
 |---|---|
 | `/bism journal` | the journal |
+| `/bism lounge` | the Clipper Lounge, full screen |
+| `/bism share` · `/bism share 3` | a share card of your newest memory · of an older one |
 | `/bism map` | the map of where |
 | `/bism year` | the year so far |
 | `/bism group` | a group photo |
