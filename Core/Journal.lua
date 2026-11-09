@@ -391,6 +391,18 @@ local function build()
 
   f.close = key(f, 30, 26, "X", function() J.Hide() end)
   f.close:SetPoint("TOPLEFT", f, "TOPLEFT", W - 16 - 30, -7)
+  -- THE LOUNGE (8 Nov 2026): the same memories full screen - the Clipper Lounge (Lounge.lua)
+  f.lounge = key(f, 110, 26, "LOUNGE", function() if ns.Lounge then ns.Lounge.Show() end end)
+  f.lounge:SetPoint("TOPLEFT", f, "TOPLEFT", W - 16 - 30 - 8 - 110, -7)
+  f.lounge:SetScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+    GameTooltip:SetText("The Clipper Lounge")
+    GameTooltip:AddLine("your memories full screen - Escape or JOURNAL brings you back", 0.7, 0.7, 0.7)
+    GameTooltip:Show()
+  end)
+  f.lounge:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  J.Pop(f.lounge, f.lounge.word)
 
   ------------------------------------------------ the keys over the left display: its pages, and whose
   f.tabs = {}
@@ -642,7 +654,7 @@ local function build()
   -- shut (Escape, X, anything): a drag in hand stops, and the postcard is asked afresh next time
   f:SetScript("OnHide", function()
     if ns.MapView then ns.MapView.StopDrag(f.map) end
-    J.postFor = nil
+    f.post.postFor = nil
   end)
   if UISpecialFrames then table.insert(UISpecialFrames, "BiSMemoriesJournal") end
   f:Hide()
@@ -769,9 +781,9 @@ function J.Ask(m, e, body, tries)
     if J.Drawn(m) then J.Look(m, e) end
     return
   end
-  local token = J.postToken
+  local token = m.askToken                               -- the model's own: a newer postcard in it makes this one stale
   C_Timer.After(J.LOAD_WAIT, function()
-    if J.postToken ~= token or J.sel ~= e or not m:IsShown() then return end
+    if m.askToken ~= token or J.sel ~= e or not m:IsShown() then return end
     if J.Drawn(m) then return J.Look(m, e) end
     if tries >= J.LOAD_TRIES then return end
     if tries == 2 and body.display and body.npc then body = { npc = body.npc } end   -- the model would not: the creature
@@ -783,13 +795,15 @@ end
 --- dead at your feet (Arn, 8 Nov 2026: "bis memories is not showing the boss dead"), whoever killed you standing over
 --- you. Only your own memories draw you: an addon can draw the character you are playing, not one who is logged out.
 --- Asked once per memory opened (a page turn or a new note does not ask the client again).
-function J.Postcard(e)
-  local p = J.frame and J.frame.post
+--- `p`: the postcard to draw in - the journal's (the default), or any frame holding `you` and `them` (DressUpModels)
+--- and a `note` label: the Clipper Lounge's window seat draws through this same function (Lounge.lua).
+function J.Postcard(e, p)
+  p = p or (J.frame and J.frame.post)
   if not p then return end
-  if J.postFor == e then return end
-  J.postFor = e
-  J.postToken = (J.postToken or 0) + 1
+  if p.postFor == e then return end
+  p.postFor = e
   local you, them = p.you, p.them
+  them.askToken = (them.askToken or 0) + 1
   -- only the character who took it: an old note nobody has claimed yet (M.ClaimOld) draws nobody
   local mine = type(e) == "table" and e.char == M.Me()
   p.note:SetText("")
@@ -920,7 +934,7 @@ end
 local function paintDetail(f)
   local e = J.sel
   if type(e) ~= "table" then
-    J.postFor = nil
+    f.post.postFor = nil
     f.post.you:Hide()
     f.post.them:Hide()
     f.post.note:SetText("")
@@ -1092,7 +1106,7 @@ function J.Show()
   local f = build()
   J.Fit()
   f:Show()                                     -- shown before it is painted: a hidden model loads nothing,
-  J.postFor = nil                              -- so whatever was asked while it was shut is asked again
+  f.post.postFor = nil                         -- so whatever was asked while it was shut is asked again
   J.Refresh()
   return true
 end
@@ -1101,7 +1115,7 @@ function J.Hide()
   if J.frame then
     J.frame:Hide()
     if ns.MapView then ns.MapView.StopDrag(J.frame.map) end
-    J.postFor = nil
+    J.frame.post.postFor = nil
   end
   return true
 end
@@ -1114,6 +1128,7 @@ end
 --- Called when a memory lands, so an open window does not go stale while you play.
 function J.Touch()
   if J.frame and J.frame:IsShown() then J.Refresh() end
+  if ns.Lounge and ns.Lounge.Touch then ns.Lounge.Touch() end
 end
 
 --------------------------------------------------------------------- on screen --

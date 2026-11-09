@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **The Clipper Lounge: your memories full screen.** Press LOUNGE on the journal (or type `/bism lounge`) and the whole screen becomes a 1960s jetliner lounge. It fits any monitor, laptop to ultrawide, and Escape takes you back.
+  - **A departure board across the top.** Your memories are flights on split-flap letters: the time, a flight number (BOS for a boss, LVL for a level, PLC for a new place...), where it was, the zone as the gate, and a remark like FIRST KILL or FASTEST. Turn the page and the letters clatter over, then stop. Click a flight to pick it.
+  - **The window seat.** The memory you picked, seen through an oval cabin window at dusk: you, and a boss you killed lying beside you.
+  - **Your boarding pass.** A ticket for the memory: where you came from and where it happened, passenger, flight, seat (your level), date, and the screenshot's file name on the tear-off stub.
+  - **A route map from the seat pocket.** The world map on paper, with dashed lines joining your memories in the order they happened. Zoom with + and - or the mouse wheel.
+  - **Five round gauges** for bosses, level, places, deaths and memories kept. Their needles swing into place when the lounge opens.
+  - **Call buttons**: EARLIER and LATER step through your memories, GROUP PHOTO starts one, JOURNAL takes you back to the window.
+  - A fight closes the lounge right away, and it won't open during one.
+
 - **Your journal is a jetliner cockpit now.** A bigger window (same shape) with two black glass screens side by side, each doing one job in big, easy type. Colour means something: green = on, cyan = labels, magenta = the memory you picked, white = the facts.
 - **Keys instead of tabs.** MEMORIES, MAP, YEAR and CHARACTER (just this character, or all of them) are raised keys along the top; the one you are on has a green bar.
 - **Six memories a page, big.** The left screen is a page like a flight computer's: "MEMORIES 1/13", six memories with the time and kind over each, each night's heading as a cyan line. PREV PAGE / NEXT PAGE underneath, or use the mouse wheel. The one you picked sits in magenta brackets.

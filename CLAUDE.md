@@ -34,6 +34,21 @@ Read ../_bisdev/CLAUDE.md first.
   `J.Look` sets the pose (a boss `J.DEAD`, UNVERIFIED, else 1) and the camera only once drawn), the note, the data
   blocks `f.data` (`J.DATA`). The memo line (ALBUM, `f.pathBox`, the count), the on-this-day card (`J.Toast`),
   the countdown (`J.Count`).
+- `Core/Lounge.lua` (`ns.Lounge`, `L`): THE CLIPPER LOUNGE (8 Nov 2026), the journal full screen (`/bism lounge`, lng,
+  clipper; the journal's `f.lounge` key). `BiSMemoriesLounge` = a dark backdrop on UIParent (FULLSCREEN_DIALOG, Escape)
+  holding `L.room`, drawn at ONE design size `L.W` x `L.H` (16:9; every place in units `L.U` = 1% of the width, the
+  mockup's cqw) and `SetScale`d to the largest 16:9 that fits UIParent each time it opens (`L.Size`); `L.Fonts` keeps
+  every word at its share of the width, never under `L.MIN_FONT` (9) on the screen. Parts (`L.parts`): the departure
+  board `L.board` (`L.ROWS` flights a page, `L.TILES` split-flap tiles per column, `L.Flights` codes BOS/LVL/PLC...,
+  `L.Remark`; `L.Flip` = an OnUpdate only while the letters clatter, `L.FLIP_BUDGET`); the window seat `L.seat` (sky
+  bands, the shade, `L.post` = J.Postcard's holder - J.Postcard(e, p) draws into any `{you, them, note}`; clips its
+  children) under OUR OWN surround art `L.surround` (Media/window.tga, made by `dev/art.py` - also disc.tga, ring.tga);
+  the boarding pass `L.Pass(parent, fonts)` (a frame of its own, words from `L.PassFields(e, list, {private})` - one
+  place, for the coming SHARE card; branded BiS> Memories, never "Clipper", Arn 8 Nov); the note card (`L.CardFields`),
+  the sign, the call pills (`L.call`); the paper route map `L.map` (Map.lua's MV with `panel.paper` / `panel.pal`, dashed
+  arcs `L.Arcs` in time order, Lines); the gauges `L.gauges` (`L.Counts`, `L.Angle`, needles = Lines, `L.Swing` once
+  on opening). The chosen memory is the journal's `J.sel`. Shut (Escape, X, `PLAYER_REGEN_DISABLED`): OnHide stops
+  the flip, the swing and a drag; it does not open in a fight (`L.InFight`).
 - `UI/Options.lua` (`ns.CFG`): BiSTheme's options window in two columns, the minimap button (kit standard, Minimap
   minor 5: left = journal, right = `CFG.Toggle`, our own options window - right-click again closes it, never the
   game's options) and the BiS> Memories page in the game's options (`CFG.RegisterPage`, at PLAYER_LOGIN). Since 8 Nov

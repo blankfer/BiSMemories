@@ -434,6 +434,13 @@ function MV.Draw(panel, entries, mapID, onClick, sel)
       end
       t:SetTexture(p[1])
       t:SetTexCoord(0, w / p[4], 0, h / p[5])
+      -- `panel.paper` {r, g, b}: the art in no colours of its own, tinted like a printed map (the Clipper Lounge's
+      -- seat-pocket map); the journal's glass shows the art as the game draws it
+      local paper = panel.paper
+      if paper then
+        t:SetVertexColor(paper[1], paper[2], paper[3], 1)
+        if t.SetDesaturated then t:SetDesaturated(true) end
+      end
       t:SetSize(w * k, h * k)
       t:ClearAllPoints()
       t:SetPoint("TOPLEFT", canvas, "TOPLEFT", x, -y)
@@ -443,6 +450,13 @@ function MV.Draw(panel, entries, mapID, onClick, sel)
   local dots, inside, off, rough = MV.Dots(entries, mapID)
   local mr, mg, mb = glass("magenta", "accent")
   local wr, wg, wb = glass("white", "ink")
+  -- `panel.pal` { one, many, sel = {r, g, b} }: a panel's own pin colours (the lounge's paper map: tangerine pins, the
+  -- chosen one sky blue, a merged box and its count in ink); the journal's glass keeps the meanings of J.GLASS
+  local pal = panel.pal
+  if pal then
+    mr, mg, mb = pal.sel[1], pal.sel[2], pal.sel[3]
+    wr, wg, wb = pal.many[1], pal.many[2], pal.many[3]
+  end
   for i, c in ipairs(MV.Clusters(panel, dots)) do
     local b = panel.dots[i] or newPin(panel)
     panel.dots[i] = b
@@ -452,6 +466,7 @@ function MV.Draw(panel, entries, mapID, onClick, sel)
     local size = chosen and MV.SEL or (one and (one.rough and MV.BOX - 2 or MV.BOX)) or MV.MANY
     local r, g, bl
     if chosen then r, g, bl = mr, mg, mb
+    elseif one and pal then r, g, bl = pal.one[1], pal.one[2], pal.one[3]
     elseif one then r, g, bl = T.rgb(MV.COLOUR[one.e.reason] or "ink")
     else r, g, bl = wr, wg, wb end
     b.kind = { r, g, bl }

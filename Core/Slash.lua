@@ -16,6 +16,8 @@
       /bism journal             the album in game: what happened, newest first. No pictures -
                                 an addon cannot list a folder, and cannot draw a .jpg. See
                                 Core/Journal.lua for why that is not a Forever thing.
+      /bism lounge              the Clipper Lounge: the journal FULL SCREEN (a departure board, the window
+                                seat, the boarding pass, the route map, the gauges) - Core/Lounge.lua
       /bism map                 the journal's map: a dot where each memory was taken
       /bism year [all]          what this year's notes add up to (all: every character)
       /bism group [secs]        a group photo: a countdown for everyone with a BiS addon
@@ -27,7 +29,8 @@
 
   Every command longer than 4 letters has a short word too (ns.SHORT, 6 Nov 2026): sound = snd,
   clear = clr, zones = zone, status = stat, heard = hear, journal = book, options = opt, group = grp,
-  onthisday = otd, every = each, clean = cln; where = path. The long names keep working.
+  onthisday = otd, every = each, clean = cln, lounge = lng; where = path, clipper = lounge. The long
+  names keep working.
 
   Reading it back matters as much as taking it: the note names the file the client wrote, so a
   picture in Screenshots\ can be matched to the night it came from.
@@ -158,9 +161,9 @@ end
 -- or a habit never breaks. `ns.SHORT` is long -> short (the help shows it); `ns.SLASH_WORD` is every other
 -- word a command answers to -> its long name.
 ns.SHORT = { sound = "snd", clear = "clr", zones = "zone", status = "stat", heard = "hear", journal = "book",
-             options = "opt", group = "grp", onthisday = "otd", every = "each", clean = "cln" }
+             options = "opt", group = "grp", onthisday = "otd", every = "each", clean = "cln", lounge = "lng" }
 ns.SLASH_WORD = { places = "zones", album = "journal", config = "options", settings = "options", cheese = "group",
-                  where = "path" }
+                  where = "path", clipper = "lounge" }
 for long, short in pairs(ns.SHORT) do ns.SLASH_WORD[short] = long end
 
 --- The command a typed word means: "snd" -> "sound", "places" -> "zones"; anything else as it is.
@@ -259,6 +262,9 @@ function ns.Slash(input)
   elseif cmd == "journal" then           -- also album, book
     if ns.J then ns.J.Toggle() else ns.Print("the journal is not loaded") end
 
+  elseif cmd == "lounge" then            -- also clipper, lng: the Clipper Lounge, the journal full screen
+    if ns.Lounge then ns.Lounge.Toggle() else ns.Print("the lounge is not loaded") end
+
   elseif cmd == "map" then
     if ns.J then ns.J.Tab("map") ns.J.Show() end
 
@@ -333,7 +339,7 @@ function ns.Slash(input)
   else
     -- the short word beside each long one, in brackets: "sound (snd)"
     ns.Print("%s", T.text("muted",
-      "/bism · all · now [note] · journal (book) · map · year [all] · group (grp) · options (opt) · on|off <thing>"
+      "/bism · all · now [note] · journal (book) · lounge (lng) · map · year [all] · group (grp) · options (opt) · on|off <thing>"
       .. " · every (each) boss|death · pins mine|all|off · onthisday (otd) · clean (cln) · loot <2-5> · gap <secs>"
       .. " · sound (snd) · clear (clr) · zones (zone) · status (stat) · heard (hear) · path · db"))
   end

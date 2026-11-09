@@ -11,6 +11,8 @@ local ALLOWED = {
     HARNESS = true, print = true, BiSTheme = true, LibBiSComm = true, SLASH_BISCOMM1 = true,
     -- 0.9.0: the journal and the options window are named (Escape closes them), the minimap button too
     BiSMemoriesJournal = true, BiSMemoriesOptions = true, BiSMinimapBiSMemories = true,
+    -- 8 Nov 2026: the Clipper Lounge, the full screen (named: Escape closes it)
+    BiSMemoriesLounge = true,
     -- the third-party map libs (Libs/THIRD-PARTY.txt): LibStub's one global, the pins' show flags
     LibStub = true, HBD_PINS_WORLDMAP_SHOW_PARENT = true, HBD_PINS_WORLDMAP_SHOW_CONTINENT = true,
     HBD_PINS_WORLDMAP_SHOW_WORLD = true,
@@ -2836,6 +2838,497 @@ end)()
   f.tabs[1]:Click()
   wipe()
   J.sel, J.page = nil, "memories"
+  _G.C_Timer = keepTimer
+end)()
+
+-- ===================================================================== 8 Nov: the Clipper Lounge
+-- Arn, 8 Nov 2026: "I'll give you free reign on the full screen version of bis memories ... works on any monitor size
+-- ... think what fact people in the 50-70s would luxury in jetliners think outside the box" - and, on the mockup, "Go on
+-- the clipper lounge". A 1960s jet's upper-deck lounge over the whole screen: a split-flap departure board of memories,
+-- the chosen one through an oval cabin window, its boarding pass and note card, the seat-pocket route map, the flight
+-- engineer's gauges, the call buttons. And (Arn, the same day): branded "BiS> Memories" wherever a picture could see it
+-- - "they will look up bis clipper and nothing pops up".
+;(function()
+  local J, M, MV, L = NS.J, NS.M, NS.MapView, NS.Lounge
+  H.section("8 Nov: the Clipper Lounge - it is there")
+  H.ok(type(L) == "table" and type(L.Show) == "function", "the lounge is loaded (Core/Lounge.lua, ns.Lounge)")
+  if type(L) ~= "table" then return end
+  local Cost = dofile(ROOT .. "/../_bisdev/dev/cost.lua")
+  local d = NS.DB()
+  local log = M.Log()
+  local function wipe() for k = #log, 1, -1 do log[k] = nil end end
+  local function near(c, r, g, b)
+    return type(c) == "table" and math.abs(c[1] - r) < 0.01 and math.abs(c[2] - g) < 0.01 and math.abs(c[3] - b) < 0.01
+  end
+  local function hue(c, name) return near(c, L.Rgb(name)) end
+  local q = {}
+  local keepTimer = _G.C_Timer
+  _G.C_Timer = { After = function(t, fn) q[#q + 1] = { t = t, fn = fn } end }
+  local function run() local t = q q = {} for _, x in ipairs(t) do x.fn() end return #t end
+  local keepW, keepH = UIParent._w, UIParent._h
+  local keepMap, keepColours, keepPhoto = _G.C_Map, _G.RAID_CLASS_COLORS, M.GroupPhoto
+  math.randomseed(8)
+  d.gap, d.delay = 0, 0
+  M.me = nil
+  J.everyone, J.sel, J.page = nil, nil, "memories"
+  J.Hide()
+  _G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 }, MAGE = { r = 0.25, g = 0.78, b = 0.92 },
+                           PRIEST = { r = 1, g = 1, b = 1 }, DRUID = { r = 1, g = 0.49, b = 0.04 } }
+  -- a world map with art, and four zones on it
+  local rects = { [1456] = { 0.30, 0.40, 0.30, 0.40 }, [1429] = { 0.45, 0.55, 0.60, 0.70 },
+                  [1413] = { 0.50, 0.60, 0.40, 0.50 }, [1412] = { 0.30, 0.40, 0.45, 0.55 } }
+  _G.C_Map = {
+    GetBestMapForUnit = function() return 1412 end,
+    GetPlayerMapPosition = function() return { GetXY = function() return 0.5, 0.5 end } end,
+    GetMapArtLayers = function() return { { layerWidth = 1002, layerHeight = 668, tileWidth = 256, tileHeight = 256 } } end,
+    GetMapArtLayerTextures = function() local t = {} for i = 1, 12 do t[i] = 1000 + i end return t end,
+    GetMapRectOnMap = function(from, to) local r = to == 947 and rects[from] if r then return r[1], r[2], r[3], r[4] end end,
+  }
+  MV.rects, MV.pieces, MV.zoneIDs = {}, {}, nil
+  -- TWELVE MEMORIES, newest first, the way the camera writes them
+  local me = M.Me()
+  local T0 = os.time({ year = 2026, month = 11, day = 7, hour = 23, min = 40, sec = 0 })
+  local function at(i) return T0 - i * 600 end
+  wipe()
+  local E = {
+    { reason = "levelup", detail = "level 23", zone = "Thunder Bluff", level = 23, map = 1456, x = 0.5, y = 0.5 },
+    { reason = "boss", detail = "first kill: Lady Anacondra", zone = "Wailing Caverns - Screaming Gully", level = 22,
+      npc = 3671, secs = 27, file = "WoWScrnShot_110726_233212", class = "SHAMAN", race = "Tauren",
+      with = { "Acido Wildhammer", "Macready", "Bologna", "Qazo" }, withClass = { "SHAMAN", "MAGE", "PRIEST", "DRUID" } },
+    { reason = "boss", detail = "Mutanus the Devourer - fastest yet, 1:02", zone = "Wailing Caverns", level = 22, npc = 3654 },
+    { reason = "death", detail = "killed by Hogger", zone = "Elwynn Forest", level = 21, npc = 448, map = 1429, x = 0.5, y = 0.5 },
+    { reason = "zone", detail = "The Barrens", zone = "The Barrens", level = 20, map = 1413, x = 0.5, y = 0.5 },
+    { reason = "loot", detail = "|cffa335ee|Hitem:19019::::::::60:::::|h[Thunderfury, Blessed Blade of the Windseeker]|h|r",
+      zone = "Ragefire Chasm", level = 20 },
+    { reason = "boss", detail = "ADVENT.EXE: Taragaman slain", zone = "Ragefire Chasm", level = 19, from = "BiSShell" },
+  }
+  for i = 1, 5 do
+    E[#E + 1] = { reason = "levelup", detail = "level " .. (19 - i), zone = "Mulgore", level = 19 - i, map = 1412,
+                  x = 0.15 * i, y = 0.2 + 0.1 * i }
+  end
+  for i, e in ipairs(E) do e.at, e.char = at(i), me log[i] = e end
+  local boss = E[2]
+
+  H.section("8 Nov: the Clipper Lounge - full screen, 16:9, any monitor")
+  local SIZES = { { 1024, 768 }, { 1920, 1080 }, { 3440, 1440 }, { 1280, 1024 }, { 1188, 668 } }
+  for _, sz in ipairs(SIZES) do
+    local w, h = sz[1], sz[2]
+    UIParent._w, UIParent._h = w, h
+    H.ok(L.Show() == true, ("%dx%d: it opens"):format(w, h))
+    local back, room = L.back, L.room
+    local k = room:GetScale()
+    H.ok(back:IsShown() and back._all and back._parent == UIParent, ("%dx%d: a backdrop over the whole screen"):format(w, h))
+    H.eq(back:GetFrameStrata(), "FULLSCREEN_DIALOG", "on top of everything")
+    H.ok(math.abs(room:GetWidth() / room:GetHeight() - 16 / 9) < 0.005, "the lounge is 16:9",
+         room:GetWidth() .. "x" .. room:GetHeight())
+    local sw, sh = room:GetWidth() * k, room:GetHeight() * k
+    H.ok(sw <= w + 0.01 and sh <= h + 0.01, ("%dx%d: the whole lounge is on the screen"):format(w, h), ("%.0fx%.0f"):format(sw, sh))
+    H.ok(sw >= w * 0.95 or sh >= h * 0.95, ("%dx%d: as large as fits"):format(w, h), ("%.0fx%.0f"):format(sw, sh))
+    -- every part inside the lounge
+    local outside = {}
+    for name, p in pairs(L.parts) do
+      local x, y = p:OffsetFor("TOPLEFT")
+      if not x or x < -0.01 or -y < -0.01 or x + p:GetWidth() > room:GetWidth() + 0.01 or -y + p:GetHeight() > room:GetHeight() + 0.01 then
+        outside[#outside + 1] = name
+      end
+    end
+    H.ok(#outside == 0, ("%dx%d: every part of it inside the lounge"):format(w, h), table.concat(outside, ", "))
+    -- no word smaller than the least a person can read
+    local small, n = {}, 0
+    for _, fs in ipairs(H.labels) do
+      if fs._shown ~= false and fs._text ~= "" and insideShown(fs, room) then
+        n = n + 1
+        if (fs._size or 0) * k < L.MIN_FONT - 0.01 then small[#small + 1] = ("%q %.1f"):format(strip(fs._text), fs._size * k) end
+      end
+    end
+    H.ok(n > 300 and #small == 0, ("%dx%d: no word smaller than %d on the screen (%d measured)"):format(w, h, L.MIN_FONT, n),
+         table.concat(small, ", "))
+    fitsIn(room, ("the lounge at %dx%d"):format(w, h))
+    L.Hide()
+  end
+  UIParent._w, UIParent._h = keepW, keepH
+  H.ok(L.MIN_FONT >= 9, "the least font is 9", L.MIN_FONT)
+
+  H.section("8 Nov: the Clipper Lounge - the departure board")
+  J.sel = nil
+  L.Show()
+  local B = L.board
+  local function cell(r, col)
+    local t = {}
+    for _, tile in ipairs(B.rows[r].tiles[col]) do t[#t + 1] = tile.want end
+    return (table.concat(t):gsub("%s+$", ""))
+  end
+  local function shown(r, col)
+    local t = {}
+    for _, tile in ipairs(B.rows[r].tiles[col]) do t[#t + 1] = tile.fs._text end
+    return (table.concat(t):gsub("%s+$", ""))
+  end
+  local function settle() for _ = 1, 200 do if not B:GetScript("OnUpdate") then return end B:Fire("OnUpdate", 0.02) end end
+  settle()
+  H.eq(J.sel, E[1], "it opens on the newest memory, chosen")
+  H.eq(#B.rows, L.ROWS, "a page is " .. L.ROWS .. " flights")
+  H.ok(L.ROWS >= 5, "at least five a page")
+  H.eq(cell(1, 1), os.date("%H:%M", E[1].at), "TIME: when")
+  H.eq(cell(1, 2), "LVL 6", "FLIGHT: the kind's code and its number, counted from the first (the 6th level up)")
+  H.eq(cell(2, 2), "BOS 3", "a boss is BOS (the 3rd)")
+  H.eq(cell(3, 2), "BOS 2", "and the one before it BOS 2")
+  H.eq(cell(4, 2), "DTH 1", "a death DTH")
+  H.eq(cell(5, 2), "PLC 1", "a new place PLC")
+  H.eq(cell(2, 3), "LADY ANACONDRA", "DESTINATION: what it was, in capitals, without 'first kill:'")
+  H.eq(cell(2, 4), "WAILING CAV", "GATE: the zone, short")
+  H.eq(cell(1, 4), "THUNDER BLU", "cut to the gate's tiles")
+  H.eq(cell(1, 5), "BOARDING", "REMARKS: the chosen one is BOARDING")
+  H.eq(cell(2, 5), "FIRST KILL", "a first kill")
+  H.eq(cell(3, 5), "FASTEST", "the fastest yet")
+  H.eq(cell(3, 3), "MUTANUS THE DEVOURER", "and its name without the time")
+  H.ok(cell(4, 5) ~= "" and cell(5, 5) ~= "", "every flight has a remark", cell(4, 5) .. "/" .. cell(5, 5))
+  H.ok(shown(2, 3) == cell(2, 3), "settled: the tiles show the words")
+  -- split-flap tiles: one dark tile per character with a seam across the middle
+  local tile = B.rows[2].tiles[3][1]
+  H.ok(tile.bg and tile.top and tile.seam and tile.fs and hue(tile.bg._color, "flapBot") and hue(tile.seam._color, "seam"),
+       "a tile: dark, with its seam")
+  H.ok((tile.seam._h or 9) <= 3 and tile.top._h and tile.bg._h and math.abs(tile.top._h / tile.bg._h - 0.49) < 0.02,
+       "the seam thin, across the middle")
+  H.ok(strip(tile.fs._text) == "L" and tile.fs._font == L.FONT.flap, "one letter a tile, in the board's face")
+  -- colours: the chosen row sun-yellow, the remarks tangerine, the rest the tiles' ink
+  H.ok(hue(B.rows[1].tiles[3][1].fs._color, "sun"), "the chosen row in sun-yellow")
+  H.ok(hue(B.rows[2].tiles[3][1].fs._color, "flapink"), "the others in the tiles' cream")
+  H.ok(hue(B.rows[2].tiles[5][1].fs._color, "tangerine"), "remarks in tangerine")
+  H.ok(strip(L.pageLabel._text):find("PAGE 1 OF 3", 1, true), "the page, and how many", strip(L.pageLabel._text))
+  H.ok(strip(L.pageLabel._text):find("BiS> MEMORIES", 1, true), "the board says whose it is: BiS> Memories")
+  -- turn the page: the letters clatter once, then sit still
+  local spy = 0
+  for _, row in ipairs(B.rows) do
+    for _, col in ipairs(row.tiles) do
+      for _, t in ipairs(col) do
+        local real = t.fs.SetText
+        t.fs.SetText = function(self, v) spy = spy + 1 return real(self, v) end
+      end
+    end
+  end
+  H.eq(B:GetScript("OnUpdate"), nil, "nothing runs while the board stands still")
+  L.keys.earlier:Click()
+  H.eq(L.pageNo, 2, "the earlier key: the page of older memories")
+  H.ok(B:GetScript("OnUpdate") ~= nil, "a page turn starts the flip")
+  local moving = 0
+  for r = 1, L.ROWS do if shown(r, 3) ~= cell(r, 3) then moving = moving + 1 end end
+  H.ok(moving > 0, "the letters are flapping", moving)
+  local frames, n, by = 0, nil, nil
+  n, by = Cost.Count(function()
+    while B:GetScript("OnUpdate") and frames < 300 do B:Fire("OnUpdate", 1 / 60) frames = frames + 1 end
+  end)
+  H.ok(frames > 5 and frames / 60 <= L.FlipLongest() + 0.05 and L.FlipLongest() <= 1.0,
+       "the flip is over within a second, and removes itself", frames .. " frames, " .. L.FlipLongest())
+  H.eq(B:GetScript("OnUpdate"), nil, "then nothing runs")
+  local still = true
+  for r = 1, L.ROWS do for c = 1, #L.TILES do if shown(r, c) ~= cell(r, c) then still = false end end end
+  H.ok(still, "and every tile shows its letter")
+  H.eq(cell(2, 2), "BOS 1", "page 2: the oldest boss is BOS 1 (the ADVENT one, 7th newest)")
+  H.eq(cell(2, 5), "ADVENT", "a BiS Shell game's memory: its game in the remarks")
+  H.eq(cell(1, 3), ("THUNDERFURY, BLESSED BLADE OF THE WINDSEEKER"):sub(1, L.TILES[3]):gsub("%s+$", ""), "an item: its name, no link codes, cut to the tiles")
+  H.say(("   cost: a page turn's flip = %d client calls, %d tile letters set"):format(n, spy))
+  -- budgets (8 Nov 2026): measured 0 calls (the flip asks the client nothing - it counts its own elapsed time) and
+  -- about 1,900 letters set for two pages of flapping tiles; a flip is once per page turn and lasts under a second
+  H.ok(n <= 2, "a flip asks the client at most 2 things (measured " .. n .. ")", Cost.Top(by, 5))
+  H.ok(spy <= L.FLIP_BUDGET and L.FLIP_BUDGET <= 2500, "a flip sets at most " .. L.FLIP_BUDGET .. " letters (measured " .. spy .. ")")
+  -- the wheel turns the board too; the later key turns back; the ends stop
+  B:Fire("OnMouseWheel", -1)
+  H.eq(L.pageNo, 3, "the wheel down: older")
+  settle()
+  L.keys.earlier:Click()
+  H.eq(L.pageNo, 3, "no page past the oldest")
+  settle()
+  L.keys.later:Click() settle() L.keys.later:Click() settle() L.keys.later:Click() settle()
+  H.eq(L.pageNo, 1, "the later key back to the newest, and no further")
+  -- a hidden board stops mid-flip with every letter in place
+  L.keys.earlier:Click()
+  L.Hide()
+  H.eq(B:GetScript("OnUpdate"), nil, "shut mid-flip: nothing runs")
+  still = true
+  for r = 1, L.ROWS do for c = 1, #L.TILES do if shown(r, c) ~= cell(r, c) then still = false end end end
+  H.ok(still, "and the board shows its words for next time")
+  L.Show()
+  settle()
+  -- click a flight: it is chosen
+  L.Turn(-9)
+  settle()
+  B.rows[2]:Click()
+  H.eq(J.sel, boss, "clicking a flight chooses it")
+  H.eq(B:GetScript("OnUpdate"), nil, "choosing on the same page flips nothing")
+  H.eq(cell(2, 5), "BOARDING", "it is BOARDING now")
+  H.eq(cell(1, 5), "ON TIME", "and the one before is back to its own remark")
+  H.ok(hue(B.rows[2].tiles[3][1].fs._color, "sun") and hue(B.rows[1].tiles[3][1].fs._color, "flapink"), "sun-yellow moved with it")
+
+  H.section("8 Nov: the Clipper Lounge - the window seat")
+  local S, P = L.seat, L.post
+  H.ok(S:DoesClipChildren(), "the window's box cuts whatever reaches past it")
+  H.ok(P.you._parent and P.you:IsVisible() and P.you._unit == "player", "you, in the window")
+  H.ok(P.them:IsShown() and P.them._creature == 3671, "the boss, beside you")
+  for _, m in ipairs({ P.you, P.them }) do
+    local inside = true
+    for _, p in ipairs(m._points or {}) do
+      if math.abs(p.x) + (m._w or 0) > S:GetWidth() + 0.01 or math.abs(p.y) + (m._h or 0) > S:GetHeight() + 0.01 then inside = false end
+    end
+    H.ok(inside and (m._w or 0) <= S:GetWidth() and (m._h or 0) <= S:GetHeight(), "a model sized inside the window")
+  end
+  run() run()
+  H.eq(P.them._anim, J.DEAD, "the boss lies dead (the journal's own look, J.Look)")
+  H.ok(P.them._cam and P.them:GetModelFileID() > 0, "drawn, its camera set after")
+  H.ok(L.surround:GetFrameLevel() > S:GetFrameLevel() + 2 and tostring(L.surround.art._texture):find("Media\\window", 1, true),
+       "our own window surround over the models, covering the corners")
+  local sky = L.sky
+  H.ok(#sky >= 12, "a sky in bands", #sky)
+  local top, low = sky[1]._color, nil
+  for _, band in ipairs(sky) do if not band.ground then low = band._color end end
+  H.ok(top and top[3] > top[1] and low and low[1] > low[3], "dusk: blue above, tangerine at the horizon")
+  H.ok(sky[#sky].ground and sky[#sky]._color[1] < 0.5, "and the ground below it")
+  H.ok(L.shade and L.shade:IsShown() and (L.shade._h or 0) > 0 and (L.shade._h or 0) < S:GetHeight() * 0.2,
+       "the shade pulled down a little at the top")
+  H.ok(strip(L.winLabel._text):find("WINDOW SEAT", 1, true) and strip(L.winLabel._text):find(os.date("%H:%M", boss.at), 1, true),
+       "WINDOW SEAT and the time under it")
+  -- the journal's postcard and the lounge's are the same function: each its own models, one asking once
+  local asks = P.them._asks
+  L.Select(boss)
+  H.eq(P.them._asks, asks, "the same memory again: not asked again")
+
+  H.section("8 Nov: the Clipper Lounge - the boarding pass")
+  local pass = L.pass
+  local function txt(fs) return strip(fs._text or "") end
+  H.eq(txt(pass.brand), "BiS> MEMORIES", "the pass says BiS> Memories - the addon's own name, findable")
+  H.ok(txt(pass.title):find("BOARDING PASS", 1, true), "BOARDING PASS")
+  H.eq(txt(pass.toCode), "WC", "TO: the zone's code")
+  H.ok(txt(pass.toName):find("WAILING CAVERNS", 1, true), "and its name")
+  H.eq(txt(pass.fromCode), "WC", "FROM: where the memory before it was (Mutanus, the same cave)")
+  H.eq(txt(pass.grid.passenger.val), "KUMLUST", "PASSENGER: the character")
+  H.eq(txt(pass.grid.flight.val), "BOS 3", "FLIGHT")
+  H.eq(txt(pass.grid.seat.val), "LVL 22", "SEAT: the level")
+  H.eq(txt(pass.grid.date.val), os.date("%d %b", boss.at):upper(), "DATE")
+  H.eq(txt(pass.grid.party.val), "4", "PARTY: how many with you")
+  H.ok(txt(pass.kind) == "BOSS" and txt(pass.stamp) == "BiS> Memories", "the stub: the kind, and BiS> Memories stamped on it")
+  H.ok(txt(pass.file):find("WoWScrnShot", 1, true) and txt(pass.file):find("233212", 1, true), "the picture's file name on the stub")
+  local bars = 0
+  for _, b in ipairs(pass.bars) do if b:IsShown() then bars = bars + 1 end end
+  H.ok(bars >= 15, "drawn barcode stripes", bars)
+  H.ok(pass.frame._parent == L.room and pass.frame:GetWidth() > 0, "the ticket is its own frame (Lounge.Pass) - a share card can draw it alone")
+  -- the fields come from ONE place, so a share card can swap the names
+  local plain = L.PassFields(boss, J.Entries())
+  local private = L.PassFields(boss, J.Entries(), { private = true })
+  H.eq(plain.passenger, "KUMLUST", "PassFields: the passenger")
+  H.ok(private.passenger == "A TAUREN SHAMAN" and private.party == "4", "private: a Tauren Shaman, no name", private.passenger)
+  local cardP = L.CardFields(boss, { private = true })
+  H.ok(not strip(cardP.line):find("Acido", 1, true) and strip(cardP.line):find("4 friends", 1, true), "private: '4 friends'", cardP.line)
+  local fresh = L.Pass(UIParent)
+  fresh:Paint(private)
+  H.eq(txt(fresh.grid.passenger.val), "A TAUREN SHAMAN", "a second ticket, drawn alone, from the same fields")
+  fresh.frame:Hide()
+
+  H.section("8 Nov: the Clipper Lounge - the note card, the sign")
+  H.eq(txt(L.card.title), "Lady Anacondra · first kill", "the title, big")
+  local line = L.card.line._text
+  H.ok(strip(line):find("Screaming Gully", 1, true) and strip(line):find("0:27", 1, true), "where, and how long it took", strip(line))
+  H.ok(line:find("|cff0070dd", 1, true) and strip(line):find("Acido Wildhammer", 1, true), "who with, in their class colours", line)
+  H.ok((L.card.title._size or 0) > (L.card.line._size or 0) * 1.4, "the title much bigger than the line")
+  H.ok(txt(L.sign.text):find("FASTEN SEATBELT", 1, true) and txt(L.sign.text):find(os.date("%d %b", boss.at):upper(), 1, true),
+       "the lit sign: FASTEN SEATBELT and the memory's date")
+
+  H.section("8 Nov: the Clipper Lounge - the call buttons")
+  L.call.earlier:Click()
+  H.eq(J.sel, E[3], "EARLIER: the memory before")
+  L.call.later:Click()
+  H.eq(J.sel, boss, "LATER: back")
+  L.Select(E[5]) settle()
+  L.call.earlier:Click() settle()
+  H.ok(J.sel == E[6] and L.pageNo == 2, "EARLIER past the page's foot turns the page", L.pageNo)
+  L.Select(E[#E]) settle()
+  L.call.earlier:Click()
+  H.eq(J.sel, E[#E], "EARLIER at the oldest: stays")
+  H.ok(L.call.earlier.popIf and not L.call.earlier:popIf(), "and does not light up (nothing to go to)")
+  local photo = 0
+  M.GroupPhoto = function() photo = photo + 1 return true end
+  L.call.photo:Click()
+  H.eq(photo, 1, "GROUP PHOTO calls one")
+  M.GroupPhoto = keepPhoto
+  L.Select(boss) settle()
+  L.call.journal:Click()
+  H.ok(not L.back:IsShown() and J.frame:IsShown() and J.sel == boss, "JOURNAL: back to the windowed journal, on the same memory")
+  J.Hide()
+
+  H.section("8 Nov: the Clipper Lounge - the seat-pocket route map")
+  L.Show() settle()
+  local map = L.map
+  local tiles = 0
+  for _, t in ipairs(map.tiles or {}) do
+    if t:IsShown() then
+      tiles = tiles + 1
+      H.ok(t._desat == true and t._vertex and t._vertex[1] > t._vertex[3], "a map tile on paper colours") break
+    end
+  end
+  H.ok(tiles > 0, "the map's own art")
+  local A = L.arcs
+  H.ok(#A >= 5, "arcs join the memories on the map", #A)
+  local ordered = true
+  for i, a in ipairs(A) do
+    if not (a.from.at < a.to.at) then ordered = false end
+    if i > 1 and A[i - 1].to ~= a.from then ordered = false end
+  end
+  H.ok(ordered, "in time order, each from where the last one ended")
+  local a1 = A[1]
+  local dashes, painted = 0, true
+  for _, ln in ipairs(a1 and a1.lines or {}) do
+    dashes = dashes + 1
+    if not (ln._line and ln._vertex and ln._from and ln._to and not ln._drawsNothing and hue(ln._vertex, "sky")) then painted = false end
+  end
+  H.ok(dashes >= 3 and dashes == L.DASHES and painted, "an arc is short sky-blue dashes (Lines)", dashes)
+  local sx, sy = MV.ToScreen(map, MV.Dots({ a1.from }, 947)[1].x, MV.Dots({ a1.from }, 947)[1].y)
+  local f1 = a1.lines[1]._from
+  H.ok(math.abs(f1.x - sx) < 0.5 and math.abs(-f1.y - sy) < 0.5 and f1.rel == map.canvas, "it starts on the earlier memory's pin")
+  local chosenPin
+  for _, b in ipairs(map.dots or {}) do
+    if b:IsShown() and #b.members == 1 and b.members[1].e == J.sel then chosenPin = b end
+  end
+  L.Select(E[1]) settle()
+  for _, b in ipairs(map.dots or {}) do
+    if b:IsShown() and #b.members == 1 and b.members[1].e == E[1] then chosenPin = b end
+  end
+  H.ok(chosenPin and hue(chosenPin.sides[1]._color, "sky") and chosenPin:GetWidth() >= MV.SEL, "the chosen memory's pin: sky blue, bigger")
+  local other
+  for _, b in ipairs(map.dots or {}) do if b:IsShown() and b ~= chosenPin and #b.members == 1 then other = b end end
+  H.ok(other and hue(other.sides[1]._color, "tangerine"), "the others tangerine")
+  L.zoomIn:Click()
+  H.eq(map.view.z, 2, "the + key zooms in")
+  map:Fire("OnMouseWheel", 1)
+  H.eq(map.view.z, 3, "the wheel too")
+  L.zoomOut:Click() L.zoomOut:Click()
+  H.eq(map.view.z, 1, "the - key out")
+  other:Click()
+  H.ok(J.sel == other.members[1].e and txt(L.card.title) ~= "", "clicking a pin chooses that memory")
+
+  H.section("8 Nov: the Clipper Lounge - the flight engineer's gauges")
+  L.Hide()
+  local counts = L.Counts(J.Entries())
+  H.ok(counts.bosses == 3 and counts.deaths == 1 and counts.kept == #E and counts.places >= 6, "the counts",
+       ("%d %d %d %d"):format(counts.bosses, counts.deaths, counts.kept, counts.places))
+  L.Show()
+  local G = L.gauges
+  H.eq(#G, 5, "five gauges")
+  local names = {}
+  for _, g in ipairs(G) do names[#names + 1] = txt(g.label) end
+  H.eq(table.concat(names, " "), "BOSSES LEVEL PLACES DEATHS KEPT", "BOSSES, LEVEL, PLACES, DEATHS, KEPT")
+  H.ok(txt(G[1].num) == "3" and txt(G[4].num) == "1" and txt(G[5].num) == tostring(#E), "the number under each needle")
+  H.ok(tostring(G[1].face._texture):find("Media\\disc", 1, true) and tostring(G[1].bezel._texture):find("Media\\ring", 1, true),
+       "a round face and bezel, our own art")
+  H.ok(#G[1].arc >= 8, "a scale arc", #G[1].arc)
+  local fe = L.fe
+  H.ok(fe:GetScript("OnUpdate") ~= nil, "opening swings the needles")
+  local n0 = G[1].needle._to
+  local swing = 0
+  n, by = Cost.Count(function()
+    while fe:GetScript("OnUpdate") and swing < 200 do fe:Fire("OnUpdate", 1 / 60) swing = swing + 1 end
+  end)
+  H.ok(swing / 60 <= L.SWING + 0.05 and swing > 10, "the swing lasts " .. L.SWING .. " s, then removes itself", swing)
+  H.eq(fe:GetScript("OnUpdate"), nil, "then nothing runs")
+  H.ok(n <= 2, "the swing asks the client at most 2 things (measured " .. n .. ")", Cost.Top(by, 5))
+  local function angleOf(g) local t = g.needle._to return math.atan2(t.y, t.x) end
+  for _, g in ipairs(G) do
+    H.ok(math.abs(angleOf(g) - L.Angle(g.value / g.max)) < 1e-6, g.key .. ": the needle at its value",
+         ("%.3f vs %.3f"):format(angleOf(g), L.Angle(g.value / g.max)))
+    H.ok(g.needle._line and not g.needle._drawsNothing and g.needle._vertex, g.key .. ": a needle drawn as a Line")
+  end
+  H.ok(n0 ~= nil, "the needle had a start")
+
+  H.section("8 Nov: the Clipper Lounge - everything clickable pops")
+  local function pops(b, what, overText)
+    local enter = b and b:GetScript("OnEnter")
+    H.ok(enter ~= nil, what .. ": answers the mouse")
+    if not enter then return end
+    b:Fire("OnEnter")
+    local wash, bar = b.wash, b.bar
+    local a = wash and wash:GetAlpha() or 0
+    H.ok(a >= (overText and 0.2 or 0.3) and a <= (overText and 0.28 or 0.35), what .. ": a clear wash under the mouse", a)
+    H.ok(wash and near(wash._color, NS.T.rgb("accent")), what .. ": the wash is the accent")
+    H.ok(bar and bar:GetAlpha() == 1 and (bar._w or 0) >= 2 and (bar._w or 0) <= 3, what .. ": a 2-3 px bar lit", bar and bar._w)
+    b:Fire("OnLeave")
+    H.ok(wash and wash:GetAlpha() == 0 and bar and bar:GetAlpha() == 0, what .. ": and dark again when the mouse leaves")
+  end
+  pops(B.rows[1], "a flight on the board", true)
+  pops(L.keys.earlier, "the board's earlier key")
+  pops(L.keys.later, "the board's later key")
+  pops(L.keys.close, "the X")
+  L.Select(boss)
+  pops(L.call.earlier, "EARLIER")
+  pops(L.call.later, "LATER")
+  pops(L.call.photo, "GROUP PHOTO")
+  pops(L.call.journal, "JOURNAL")
+  pops(L.zoomIn, "the map's +")
+  pops(L.zoomOut, "the map's -")
+  local f = J.Build()
+  pops(f.lounge, "the journal's LOUNGE key")
+  H.eq(strip(f.lounge.word._text), "LOUNGE", "the journal has a LOUNGE key")
+
+  H.section("8 Nov: the Clipper Lounge - in and out")
+  L.Hide()
+  J.Show()
+  f.lounge:Click()
+  H.ok(L.back:IsShown() and not J.frame:IsShown(), "the journal's LOUNGE key: full screen, the window put away")
+  L.keys.close:Click()
+  H.ok(not L.back:IsShown(), "X shuts it")
+  NS.Slash("lounge")
+  H.ok(L.back:IsShown(), "/bism lounge opens it")
+  NS.Slash("lounge")
+  H.ok(not L.back:IsShown(), "and again shuts it")
+  NS.Slash(NS.SHORT.lounge or "lounge")
+  H.ok(NS.SHORT.lounge and #NS.SHORT.lounge <= 4 and L.back:IsShown(), "/bism " .. tostring(NS.SHORT.lounge) .. " too")
+  local said0 = #said
+  NS.Slash("help")
+  H.ok(table.concat(said, " ", said0 + 1):find("lounge (" .. tostring(NS.SHORT.lounge) .. ")", 1, true), "the help lists it")
+  -- ESCAPE: the client hides each shown UISpecialFrames frame with a bare :Hide() - only OnHide runs
+  local listed = false
+  for _, nm in ipairs(_G.UISpecialFrames) do if nm == "BiSMemoriesLounge" then listed = true end end
+  H.ok(listed and _G.BiSMemoriesLounge == L.back, "Escape knows the lounge")
+  L.Turn(1)                                       -- a flip running
+  map:Fire("OnMouseDown", "LeftButton")           -- a drag in hand
+  H.ok(B:GetScript("OnUpdate") and fe:GetScript("OnUpdate") and map:GetScript("OnUpdate"), "flip, needles and a drag all running")
+  for _, nm in ipairs(_G.UISpecialFrames) do local fr = _G[nm] if fr and fr:IsShown() then fr:Hide() end end
+  H.ok(not L.back:IsShown(), "Escape shuts it")
+  -- NOTHING TICKS WHILE HIDDEN: every frame of the lounge
+  local ticking = {}
+  for _, fr in ipairs(H.frames) do
+    local p, mine = fr, false
+    while p do if p == L.back then mine = true break end p = p._parent end
+    if mine and fr:GetScript("OnUpdate") then ticking[#ticking + 1] = tostring(fr._type) end
+  end
+  H.ok(#ticking == 0, "shut: nothing of the lounge ticks", table.concat(ticking, ", "))
+  H.ok(L.post.postFor == nil, "and the window is asked afresh next time (a hidden model loads nothing)")
+  -- A FIGHT: shut at once, and not opened in one
+  L.Show()
+  H.ok(L.back._events.PLAYER_REGEN_DISABLED, "while open it listens for a fight")
+  said0 = #said
+  fire("PLAYER_REGEN_DISABLED")
+  H.ok(not L.back:IsShown(), "a fight shuts it at once")
+  H.ok(not L.back._events.PLAYER_REGEN_DISABLED, "shut: it listens for nothing")
+  _G.InCombatLockdown = function() return true end
+  H.ok(L.Show() == false and not L.back:IsShown(), "in a fight it does not open")
+  H.ok(#said > said0, "and says why")
+  _G.InCombatLockdown = nil
+
+  H.section("8 Nov: the Clipper Lounge - lean")
+  local nO, byO = Cost.Count(function() L.Show() end)
+  H.say(("   cost: opening the lounge on 12 memories = %d client calls"):format(nO))
+  -- budget (8 Nov 2026): measured on opening - the map's art and rectangles (kept after), the player's level, the
+  -- date; opened by hand, once
+  H.ok(nO <= L.OPEN_BUDGET, "opening asks the client at most " .. L.OPEN_BUDGET .. " things (measured " .. nO .. ")", Cost.Top(byO, 6))
+  local nM, byM = Cost.Count(function() MV.Zoom(map, 1) end)
+  H.ok(nM <= 5, "a map repaint with its arcs asks at most 5 things (measured " .. nM .. ")", Cost.Top(byM, 5))
+  local nT, byT = Cost.Count(function() L.Select(E[3]) end)
+  H.ok(nT <= 10, "choosing a flight asks at most 10 things (measured " .. nT .. ")", Cost.Top(byT, 5))
+  L.Hide()
+  local nH = Cost.Count(function() for _ = 1, 60 do M.OnEvent("CHAT_MSG_SYSTEM", "Kumlance has come online.") end end)
+  H.ok(nH <= 120, "shut, the lounge adds nothing to the game's events", nH)
+
+  wipe()
+  J.sel, J.page, J.everyone = nil, "memories", nil
+  _G.C_Map, _G.RAID_CLASS_COLORS = keepMap, keepColours
+  MV.rects, MV.pieces = {}, {}
   _G.C_Timer = keepTimer
 end)()
 
