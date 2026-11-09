@@ -1,5 +1,39 @@
 # BiSMemories
 
+## Unreleased
+
+- **Dungeon bosses show on their postcards again.** Inside a dungeon the game keeps the boss's identity hidden at the moment you kill it, so a kill's memory only knew the name and the postcard stood you there alone. With BiS Tools installed, the boss is now found by its name (BiS Tools' boss finder and Codex know them), drawn lying at your feet, and remembered for next time.
+
+- **The album page is a night flight now.** Open the album and you look out through a cockpit windscreen at a neon sunset over the grid, with a city on the skyline. Under it is a dash in stitched leather with a walnut and brass rail. Every picture sits in its own black glass screen, the search box is a flight computer's green scratchpad, and the counts are cockpit keys that light up pink when you pick one. Each night has its own heading, marked like a waypoint. It works the same as before; only the look is new, and it still works with the internet unplugged.
+
+- **Share cards: a memory as one picture to post anywhere.** Press SHARE on the journal or in the lounge (or type `/bism share`, or `/bism share 3` for an older one). For a moment the whole screen becomes that memory's boarding pass, big and alone: the boss, where and when, how long it took, who was with you and the loot that dropped. One screenshot, then everything comes back.
+  - **Names hidden, for everyone, from the start.** You show as your class ("A SHAMAN") and your party as "4 friends: rogue, hunter, druid, mage". No realm, no guild, no names. Want them on? The **NAMES OFF / NAMES ON** key beside SHARE in the lounge flips it with one click (orange when names are on), or `/bism share names on`, or the "share cards" row in the options.
+  - **The window seat shows on the card** - you, the boss and the sky in the oval. (On the first try it came out as blank paper.)
+  - **The departure board cuts at whole words** - "THE FANG GROTTO", never "THE FANG GROTTO BE"; "THUNDER", never "THUNDER BLU". A BiS Shell game's flight drops its "ADVENT.EXE:" (REMARKS already says ADVENT).
+  - **ADVENT chapters are not bosses.** They fly as **ADV** flights, their card says CLEARED and their stub ADVENT, and the BOSSES gauge counts real bosses only.
+  - **The loot that dropped.** A boss memory now remembers the items seen in the minute after the kill, and the card lists them.
+  - **Save it from the album page.** A share card shows up cut down to just the ticket, with SAVE IMAGE (a .png in your Downloads) and COPY (where your browser allows it). Save it and post it anywhere.
+  - Never during a fight: it won't start in one, and a fight that starts puts it away at once.
+  - **For other addons:** `BiSMemoriesAPI.ShareCard(owner, card)` and `ShareMemory(owner, index)` (API version 4). The player's names switch applies.
+
+- **The Clipper Lounge: your memories full screen.** Press LOUNGE on the journal (or type `/bism lounge`) and the whole screen becomes a 1960s jetliner lounge. It fits any monitor, laptop to ultrawide, and Escape takes you back.
+  - **A departure board across the top.** Your memories are flights on split-flap letters: the time, a flight number (BOS for a boss, LVL for a level, PLC for a new place...), where it was, the zone as the gate, and a remark like FIRST KILL or FASTEST. Turn the page and the letters clatter over, then stop. Click a flight to pick it.
+  - **The window seat.** The memory you picked, seen through an oval cabin window at dusk: you, and a boss you killed lying beside you.
+  - **Your boarding pass.** A ticket for the memory: where you came from and where it happened, passenger, flight, seat (your level), date, and the screenshot's file name on the tear-off stub.
+  - **A route map from the seat pocket.** The world map on paper, with dashed lines joining your memories in the order they happened. Zoom with + and - or the mouse wheel.
+  - **Five round gauges** for bosses, level, places, deaths and memories kept. Their needles swing into place when the lounge opens.
+  - **Call buttons**: EARLIER and LATER step through your memories, GROUP PHOTO starts one, JOURNAL takes you back to the window.
+  - A fight closes the lounge right away, and it won't open during one.
+
+- **Your journal is a jetliner cockpit now.** A bigger window (same shape) with two black glass screens side by side, each doing one job in big, easy type. Colour means something: green = on, cyan = labels, magenta = the memory you picked, white = the facts.
+- **Keys instead of tabs.** MEMORIES, MAP, YEAR and CHARACTER (just this character, or all of them) are raised keys along the top; the one you are on has a green bar.
+- **Six memories a page, big.** The left screen is a page like a flight computer's: "MEMORIES 1/13", six memories with the time and kind over each, each night's heading as a cyan line. PREV PAGE / NEXT PAGE underneath, or use the mouse wheel. The one you picked sits in magenta brackets.
+- **The memory on the right screen.** The 3D postcard on top, the note in big white letters, then WHERE, LEVEL, WITH, FIGHT TOOK and FILE in their own places.
+- **The boss lies dead beside you.** A boss kill's postcard now shows the boss lying at your feet, not just you.
+- **Zoom the map.** The mouse wheel zooms in and out around the pointer, drag to move around, and the RANGE knob under the map (with - and + keys) shows how close you are (1x to 16x). Pins are hollow squares with an empty middle. Pins too close together become one box with a number; zoom in (or click the box) and they spread out. Click a pin to open that memory on the right.
+- **The album line at the bottom** shows ALBUM, the path to copy, and how many memories you have kept. How to use the path is in its tooltip.
+- **For other addons:** `BiSMemoriesAPI.TakeMemory(note, kind, from, extra)` can say which creature it was (`npc`, `display`) and ask for a picture with the interface left in (`keepUI = true`). BiS Shell's ADVENT.EXE uses this so its boss pictures show the game screen.
+
 ## 1.0.0 - Forever 1.0
 
 - **Already using BiS Memories? Nothing changes for you.** Every switch you had stays exactly as it was - including the ones you never touched.

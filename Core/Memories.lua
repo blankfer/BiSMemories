@@ -39,7 +39,7 @@ local TRIGGERS = {
   { key = "group",       label = "group photos",          on = false, word = "Group photo" },
 }
 M.TRIGGERS = TRIGGERS
-M.WORDS = { manual = "By hand" }
+M.WORDS = { manual = "By hand", share = "Share card" }    -- a share card (Share.lua) is no trigger: always by hand
 for _, t in ipairs(TRIGGERS) do M.WORDS[t.key] = t.word end
 --- A kind as people read it ("Level up"), whatever key the note carries.
 function M.Word(reason) return M.WORDS[reason or ""] or tostring(reason or "?") end
@@ -258,6 +258,8 @@ local function shotStem()
   return "WoWScrnShot_" .. stamp
 end
 
+M.Stem, M.Click = shotStem, click     -- the share card's picture (Share.lua) is named and clicks the same way
+
 local function where()
   local zone = plain((GetRealZoneText and GetRealZoneText()) or (GetZoneText and GetZoneText())) or "?"
   local sub = plain(GetSubZoneText and GetSubZoneText()) or ""
@@ -396,12 +398,28 @@ end
 --- Take one, and write down why. Returns the entry, or nil and the reason it did not.
 --- `from` is the asking addon's name, for a memory asked for through API.lua (else nil).
 --- `extra`: fields for the note beyond the usual (a level that has just changed, a boss's npc id...).
+--- Inside the player's gap between two pictures? (`M.Mark` starts the gap.) The share card (Share.lua) keeps it too.
+function M.TooSoon()
+  local now = (GetTime and GetTime()) or 0
+  return lastShot > 0 and (now - lastShot) < (db().gap or 8)
+end
+function M.Mark() lastShot = (GetTime and GetTime()) or 0 end
+
+--- A note into the log, newest first, the log kept to its length; an open journal and the map's pins follow.
+function M.Keep(entry)
+  local log = M.Log()
+  table.insert(log, 1, entry)
+  for i = #log, (db().keep or 250) + 1, -1 do log[i] = nil end
+  if ns.J and ns.J.Touch then ns.J.Touch() end
+  if ns.Pins and ns.Pins.Update then pcall(ns.Pins.Update) end
+  return entry
+end
+
 function M.Shoot(reason, detail, from, extra)
   local d = db()
   if d[reason] == false then return nil, "off" end
-  local now = (GetTime and GetTime()) or 0
-  if lastShot > 0 and (now - lastShot) < (d.gap or 8) then return nil, "too soon" end
-  lastShot = now
+  if M.TooSoon() then return nil, "too soon" end
+  M.Mark()
 
   -- A PICTURE OF A PLACE IS PROOF YOU HAVE BEEN THERE. Whatever the reason - a level, a boss, a
   -- candid - the zone goes on the list, so it is never later mistaken for somewhere new.
@@ -427,11 +445,16 @@ function M.Shoot(reason, detail, from, extra)
     gear = M.Gear(),
   }
   entry.map, entry.x, entry.y = M.Spot()
-  for k, v in pairs(type(extra) == "table" and extra or {}) do entry[k] = v end
+  -- `keepUI` (8 Nov 2026, BiS Shell's ADVENT.EXE through API.lua): this picture keeps the interface in - the game is
+  -- ON the interface, and a clean shot photographed the world behind it. For the shot only, never on the note.
+  local keepUI = type(extra) == "table" and extra.keepUI == true
+  for k, v in pairs(type(extra) == "table" and extra or {}) do
+    if k ~= "keepUI" then entry[k] = v end
+  end
 
   local function capture()
     entry.file = shotStem()
-    if d.clean then M.Clean(true) end
+    if d.clean and not keepUI then M.Clean(true) end
     if Screenshot then pcall(Screenshot) end
     click()
     -- other addons hear it here, at the shutter, so the file name is on the note they get (API.lua)
@@ -443,13 +466,8 @@ function M.Shoot(reason, detail, from, extra)
     capture()
   end
 
-  local log = M.Log()
-  table.insert(log, 1, entry)
-  for i = #log, (d.keep or 250) + 1, -1 do log[i] = nil end
   -- an open journal follows along rather than going stale behind you; the map's pins too
-  if ns.J and ns.J.Touch then ns.J.Touch() end
-  if ns.Pins and ns.Pins.Update then pcall(ns.Pins.Update) end
-  return entry
+  return M.Keep(entry)
 end
 
 --- The log, created on first use. Kept in the DB so it survives a logout: the point of the addon
@@ -773,18 +791,76 @@ function M.BossKill(name, id, guid)
     return nil, "the same kill"
   end
   local extra = { npc = npc, secs = secs }
+  -- a boss's memory keeps what dropped in the minute after it (M.WatchCargo - the share card's CARGO)
+  local function shot(detail)
+    local e, why = M.Shoot("boss", detail, nil, extra)
+    if e then M.WatchCargo(e) end
+    return e, why
+  end
   if not rec then
     b[name] = { kills = 1, best = secs, at = now, first = (time and time()) or 0 }
-    return M.Shoot("boss", "first kill: " .. name, nil, extra)
+    return shot("first kill: " .. name)
   end
   rec.kills, rec.at = (rec.kills or 0) + 1, now
   if secs and rec.best and secs < rec.best - 1 then
     rec.best = secs
-    return M.Shoot("boss", ("%s - fastest yet, %d:%02d"):format(name, math.floor(secs / 60), math.floor(secs % 60)), nil, extra)
+    return shot(("%s - fastest yet, %d:%02d"):format(name, math.floor(secs / 60), math.floor(secs % 60)))
   end
   if secs and not rec.best then rec.best = secs end
-  if db().bossEvery then return M.Shoot("boss", name, nil, extra) end
+  if db().bossEvery then return shot(name) end
   return nil, "killed before"
+end
+
+---------------------------------------------------------------- the cargo --
+-- WHAT DROPPED (8 Nov 2026, the share card's CARGO line - Arn: "maybe all the loot that dropped"). A boss's memory
+-- keeps the items seen in the M.CARGO_FOR seconds after it: every loot line in chat (anyone's - what dropped, not only
+-- what you won) and the loot window's slots. Links, each item once, M.CARGO_MAX at most. Every value plain-checked,
+-- every client call pcalled; a loot line is string work only (a raid's loot storm asks the client nothing more - the
+-- minute is ended by a timer, not by asking the time on every line).
+M.CARGO_FOR, M.CARGO_MAX = 60, 8
+M.cargo = nil            -- { entry = the boss's memory } while its minute lasts
+
+function M.WatchCargo(entry)
+  if type(entry) ~= "table" then return nil end
+  local c = { entry = entry }
+  M.cargo = c
+  if C_Timer and C_Timer.After then
+    C_Timer.After(M.CARGO_FOR, function() if M.cargo == c then M.cargo = nil end end)
+  end
+  return c
+end
+
+--- An item link out of `text` (a loot line, a loot slot's link) onto the boss's memory. -> true when one was added.
+function M.AddCargo(text)
+  local c = M.cargo
+  if not c then return false end
+  local e = c.entry
+  if type(e.cargo) == "table" and #e.cargo >= M.CARGO_MAX then return false end
+  text = plain(text)
+  if type(text) ~= "string" then return false end
+  local link = text:match("|c%x+|Hitem:.-|h%[.-%]|h|r") or text:match("|Hitem:.-|h%[.-%]|h")
+  local id = link and tonumber(link:match("item:(%d+)"))
+  if not id then return false end
+  e.cargo = type(e.cargo) == "table" and e.cargo or {}
+  for _, x in ipairs(e.cargo) do
+    if tonumber(tostring(x):match("item:(%d+)")) == id then return false end
+  end
+  e.cargo[#e.cargo + 1] = link
+  return true
+end
+
+--- The loot window, opened in a boss's minute: every slot's link. -> how many were added.
+function M.LootWindow()
+  if not M.cargo then return 0 end
+  local okN, n = pcall(function() return GetNumLootItems and GetNumLootItems() end)
+  n = okN and plain(n) or nil
+  if type(n) ~= "number" then return 0 end
+  local added = 0
+  for i = 1, math.min(n, 20) do
+    local ok, link = pcall(GetLootSlotLink, i)
+    if ok and M.AddCargo(link) then added = added + 1 end
+  end
+  return added
 end
 
 ---------------------------------------------------------------- the deaths --
@@ -909,6 +985,7 @@ local EVENTS = {
   "PLAYER_ENTERING_WORLD",
   "SCREENSHOT_SUCCEEDED", "SCREENSHOT_FAILED",
   "PLAYER_TARGET_CHANGED",                       -- an old boss note's face (M.LearnFace)
+  "LOOT_OPENED",                                 -- a boss's loot window: its cargo (M.LootWindow)
 }
 M.EVENTS = EVENTS
 
@@ -1020,6 +1097,7 @@ function M.Decide(event, ...)
 
   elseif event == "CHAT_MSG_LOOT" then
     local msg = select(1, ...)
+    if M.cargo then M.AddCargo(msg) end               -- a boss's minute: what dropped goes on its memory
     local link = M.LootWorthy(msg)
     if not link then return nil, "not worthy" end
     return M.Shoot("loot", link)
@@ -1075,6 +1153,10 @@ function M.Decide(event, ...)
   elseif event == "PLAYER_TARGET_CHANGED" then
     return M.LearnFace()
 
+  elseif event == "LOOT_OPENED" then
+    if not M.cargo then return nil, "not a boss's loot" end
+    return nil, ("%d kept on the boss's memory"):format(M.LootWindow())
+
   elseif event == "PLAYER_ENTERING_WORLD" then
     if not M.claimTried then M.claimTried = true M.ClaimOld() end   -- the old notes that are this character's
     M.SeeZone(realZone())             -- wherever you logged in or zoned to, known from now on
@@ -1087,6 +1169,7 @@ function M.Decide(event, ...)
     local entry = M.Log()[1]
     if entry then entry.shot = (event == "SCREENSHOT_SUCCEEDED") end
     M.Clean(false)                    -- the picture is written: the interface comes back
+    if ns.Share and ns.Share.Shot then ns.Share.Shot(event) end   -- and a share card goes away
     return nil, "noted"
   end
   return nil, "ignored"

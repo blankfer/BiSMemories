@@ -10,6 +10,7 @@
 local H = {}
 _G.HARNESS = H
 H.sent, H.prints, H.sounds, H.who = {}, {}, {}, {}
+H.knownCreature, H.noCreature, H.noAnim = {}, {}, {}      -- the 3D model's session memory (see the model below)
 
 local function isnum(v) return type(v) == "number" end
 
@@ -89,6 +90,8 @@ local function newTexture(owner, layer)
         self._texture = (select(1, ...))
     end
     function t:SetTexCoord() end
+    -- kept (8 Nov 2026, the Clipper Lounge's paper map): "the map art is tinted to paper" was untestable
+    function t:SetDesaturated(v) self._desat = v and true or false end
     function t:Show() self._shown = true end
     function t:Hide() self._shown = false end
     function t:IsShown() return self._shown end
@@ -240,10 +243,29 @@ local function newFrame(ftype, name, parent)
         self._level = n
     end
     function fr:GetFrameLevel() return self._level or 0 end
+    -- kept (8 Nov 2026): "the lounge lies over everything" was untestable while these answered silence; the client's
+    -- frames start at MEDIUM
+    function fr:SetFrameStrata(s)
+        if type(s) ~= "string" then error("SetFrameStrata needs a strata name", 0) end
+        self._strata = s
+    end
+    function fr:GetFrameStrata() return self._strata or "MEDIUM" end
     function fr:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
     function fr:GetNumPoints() return 1 end
-    function fr:Show() self._shown = true end
-    function fr:Hide() self._shown = false end
+    -- SHOWING AND HIDING RUN OnShow / OnHide, AS THE CLIENT DOES (8 Nov 2026, the Clipper Lounge). Escape hides a
+    -- frame in UISpecialFrames with a bare :Hide() - its OnHide is the only thing that runs. This mock used to set a
+    -- flag and nothing else, so "Escape stops whatever was ticking" could only be tested through the addon's own
+    -- Hide function, which Escape never calls. Only a CHANGE runs the script (a hidden frame hidden again does not).
+    function fr:Show()
+        local was = self._shown
+        self._shown = true
+        if not was and self._scripts.OnShow then self._scripts.OnShow(self) end
+    end
+    function fr:Hide()
+        local was = self._shown
+        self._shown = false
+        if was and self._scripts.OnHide then self._scripts.OnHide(self) end
+    end
     function fr:IsShown() return self._shown end
     function fr:SetShown(v) if v then self:Show() else self:Hide() end end   -- the client's frames have it
     function fr:IsVisible()
@@ -257,16 +279,51 @@ local function newFrame(ftype, name, parent)
     end
     function fr:CreateTexture(_, layer) local t = newTexture(self, layer); self._regions = self._regions or {}; table.insert(self._regions, t); return t end
     function fr:CreateFontString(_, _, template) local f = newFontString(self, template); self._regions = self._regions or {}; table.insert(self._regions, f); return f end
+    -- A LINE (8 Nov 2026, the Clipper Lounge's needles and route arcs), as the client draws one: a texture whose two
+    -- ends are pinned (SetStartPoint / SetEndPoint: a point, a region, x, y) with a thickness. SetColorTexture is
+    -- ACCEPTED AND DRAWS NOTHING on a Line (bislint `line-paint`, solved.md 14 Oct: bounce lines invisible for four
+    -- release candidates) - the mock keeps `_drawsNothing` so a suite can see it; a Line is painted with
+    -- SetTexture(WHITE8X8) + SetVertexColor.
+    function fr:CreateLine(_, layer)
+        local l = newTexture(self, layer)
+        l._line = true
+        function l:SetColorTexture() self._drawsNothing = true end
+        function l:SetStartPoint(point, rel, x, y)
+            if type(rel) ~= "table" then error("SetStartPoint needs (point, region, x, y)", 0) end
+            self._from = { point = point, rel = rel, x = x or 0, y = y or 0 }
+        end
+        function l:SetEndPoint(point, rel, x, y)
+            if type(rel) ~= "table" then error("SetEndPoint needs (point, region, x, y)", 0) end
+            self._to = { point = point, rel = rel, x = x or 0, y = y or 0 }
+        end
+        function l:SetThickness(n)
+            if not isnum(n) then error("SetThickness needs a number", 0) end
+            self._thick = n
+        end
+        self._regions = self._regions or {}
+        table.insert(self._regions, l)
+        return l
+    end
+    -- kept (8 Nov 2026): "the 3D models never draw past the cabin window" was untestable while this answered silence
+    function fr:SetClipsChildren(v) self._clips = v and true or false end
+    function fr:DoesClipChildren() return self._clips or false end
     function fr:SetScript(k, fn) self._scripts[k] = fn end
     function fr:GetScript(k) return self._scripts[k] end
     function fr:HookScript(k, fn) self._scripts["hook_" .. k] = fn end
     function fr:RegisterEvent(e) self._events[e] = true end
+    -- the client stops delivering an event to a frame that unregistered it; the catch-all kept delivering it
+    function fr:UnregisterEvent(e) self._events[e] = nil end
     function fr:UnregisterAllEvents() self._events = {} end
     function fr:Fire(script, ...) local fn = self._scripts[script]; if fn then return fn(self, ...) end end
     function fr:Click(button) return self:Fire("OnClick", button or "LeftButton") end
     function fr:SetEnabled(v) self._enabled = v and true or false end
     function fr:IsEnabled() return self._enabled end
     function fr:EnableMouse(v) self._mouse = v end
+    -- kept (8 Nov 2026, the glass cockpit): "the wheel turns this page / zooms this map" and "the window stays on
+    -- the screen" were untestable while these answered silence
+    function fr:EnableMouseWheel(v) self._wheel = v and true or false end
+    function fr:SetClampedToScreen(v) self._clamped = v and true or false end
+    function fr:IsClampedToScreen() return self._clamped or false end
     function fr:SetVerticalScroll(v) self._scroll = v end
     function fr:GetVerticalScroll() return self._scroll or 0 end
     function fr:SetScrollChild(c) self._child = c end
@@ -276,16 +333,63 @@ local function newFrame(ftype, name, parent)
     -- client refuses anything else. TryOn and Undress are UNVERIFIED on Forever (a frame's methods are
     -- not in the census); the code pcalls them.
     if ftype == "DressUpModel" or ftype == "PlayerModel" then
-        function fr:SetUnit(u) self._unit, self._creature, self._tried = u, nil, {} end
+        -- WHAT THE CLIENT DOES, INCLUDING THE INCONVENIENT PARTS (8 Nov 2026, the boss lying dead on the postcard -
+        -- BiS Shell's and BiS Tools' kits measured the same; copied, not invented):
+        --   * a CREATURE the client has not drawn this session draws NOTHING on its first ask, and draws on the
+        --     next (Arn's probe, 18 Oct: 6 of 20 the first time, 20 of 20 the second). H.knownCreature is the
+        --     session's memory; an id in H.noCreature never draws.
+        --   * a model that is not on the screen (it, or a parent, hidden) loads nothing ("a hidden model may never
+        --     load"): asked while hidden, nothing draws, and nothing is remembered for next time.
+        --   * a NEW model resets the camera: every setter forgets the zoom and the distance - a camera set before
+        --     the model drew is gone.
+        --   * "is a model there" is GetModelFileID: a file id, 0 when nothing drew.
+        --   * HasAnimation(id): false for an id in H.noAnim (UNVERIFIED on Forever - the code pcalls it).
+        local function fresh(self, file)
+            self._file, self._zoom, self._cam = file, nil, nil
+        end
+        function fr:SetUnit(u)
+            self._unit, self._creature, self._display, self._tried = u, nil, nil, {}
+            fresh(self, self:IsVisible() and 200000 or 0)
+        end
         function fr:SetCreature(id)
             if type(id) ~= "number" then error("SetCreature needs an npc id", 0) end
-            self._creature, self._unit = id, nil
+            self._creature, self._unit, self._display = id, nil, nil
+            self._asks = (self._asks or 0) + 1
+            if not self:IsVisible() or H.noCreature[id] then fresh(self, 0)
+            elseif H.knownCreature[id] then fresh(self, 100000 + id)
+            else fresh(self, 0) H.knownCreature[id] = true end
         end
-        function fr:ClearModel() self._unit, self._creature, self._tried = nil, nil, {} end
+        function fr:SetDisplayInfo(id)
+            if type(id) ~= "number" then error("SetDisplayInfo needs a display id", 0) end
+            self._display, self._creature, self._unit = id, nil, nil
+            self._asks = (self._asks or 0) + 1
+            fresh(self, self:IsVisible() and (300000 + id) or 0)
+        end
+        function fr:GetModelFileID() return self._file or 0 end
+        function fr:ClearModel()
+            self._unit, self._creature, self._display, self._tried = nil, nil, nil, {}
+            self._asks = 0                                -- the suite's own count of asks, per model shown
+            fresh(self, 0)
+        end
         function fr:Undress() self._undressed = true self._tried = {} end
         function fr:TryOn(link) self._tried = self._tried or {} self._tried[#self._tried + 1] = link end
-        function fr:SetAnimation(n) self._anim = n end
-        function fr:SetFacing(r) self._facing = r end
+        function fr:SetAnimation(n)
+            if type(n) ~= "number" then error("SetAnimation needs an animation id", 0) end
+            self._anim = n
+        end
+        function fr:HasAnimation(n) return not H.noAnim[n] end
+        function fr:SetFacing(r)
+            if type(r) ~= "number" then error("SetFacing needs radians", 0) end
+            self._facing = r
+        end
+        function fr:SetPortraitZoom(z)
+            if type(z) ~= "number" then error("SetPortraitZoom needs a number", 0) end
+            self._zoom = z
+        end
+        function fr:SetCamDistanceScale(s)
+            if type(s) ~= "number" then error("SetCamDistanceScale needs a number", 0) end
+            self._cam = s
+        end
     end
 
     if ftype == "EditBox" then

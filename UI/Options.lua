@@ -52,6 +52,20 @@ function CFG.Sections()
         help = "Someone else in your group may start the countdown on your screen and take your picture (/bism group).",
         get = function(db) return db.groupOthers == true end, set = function(db, on) db.groupOthers = on and true or false end },
     } },
+    -- SHARE CARDS (8 Nov 2026, Share.lua): names hidden unless the player says otherwise (anything but a plain false
+    -- reads hidden - the safe side; the setting is written into every save anyway, Init.lua ns.ADDED)
+    { title = "share cards", column = 1, options = {
+      { key = "shareHidden", kind = "toggle", label = "names hidden",
+        help = "On a share card your name becomes your class and your party their classes - no realm, no guild, no names anywhere on it.",
+        get = function(db) return db.shareHidden ~= false end, set = function(db, on) db.shareHidden = on and true or false end },
+      { key = "sharecard", kind = "button", label = "share card", button = "take",
+        help = "Your newest memory as a picture to post anywhere: the boarding pass, big and alone (/bism share).",
+        action = function()
+          away()
+          local e = ns.Share and ns.Share.Newest(1)
+          if e then ns.Share.Take(e) else ns.Print("no memory to share yet") end
+        end },
+    } },
     { title = "the camera", column = 2, options = {
       toggle("clean", "hide the interface", "The interface hidden for the instant of the picture, like Alt+Z, then back."),
       toggle("sound", "camera click", "A click when a picture is taken (the game only clicks for the Print Screen key)."),
@@ -265,6 +279,11 @@ function CFG.Pages()
         .. "web browser. The journal's foot holds the page's address: click it, copy it (Ctrl+C), paste it into "
         .. "Windows key + R.",
       usage = "/bism path   /bism wow <your WoW folder, if the address is a guess>" },
+    { key = "share", title = "share cards", options = rows("shareHidden", "sharecard"),
+      desc = "A memory as one picture to post anywhere: its boarding pass big and alone - the boss, the place, the time, "
+        .. "the loot that dropped. Names hidden: you are your class, your party their classes. The album page cuts the "
+        .. "ticket out and saves it.",
+      usage = "/bism share [n]   /bism share names on|off" },
   }
   local db = ns.DB()     -- the table the rows take, the same one the options window hands them
   for _, e in ipairs(pages) do e.db = db end
