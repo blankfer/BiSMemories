@@ -1,6 +1,6 @@
 # BiSMemories
 
-## Unreleased
+## 1.1.0
 
 - **Dungeon bosses show on their postcards again.** Inside a dungeon the game keeps the boss's identity hidden at the moment you kill it, so a kill's memory only knew the name and the postcard stood you there alone. With BiS Tools installed, the boss is now found by its name (BiS Tools' boss finder and Codex know them), drawn lying at your feet, and remembered for next time.
 
