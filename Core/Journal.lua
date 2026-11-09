@@ -772,6 +772,28 @@ function J.Codex(npc)
   return (disp and disp > 0) and disp or nil
 end
 
+--- A DUNGEON BOSS BY ITS NAME (Arn, 8 Nov 2026: "this shows the boss from adventure the ones from acutal dungeon dont").
+--- Inside a dungeon the game hides the creature's id at the kill, so the memory keeps only the name - and a name draws
+--- nothing. BiS Tools' boss finder knows the face by name (BiSToolsAPI 6 `BossFace`: the one it met there, else the
+--- Codex's boss). An npc id found is kept as the boss's face (`db.faces`, M.Face's own book), so it is asked once.
+--- Never a game's chapter (ADVENT's have their own display), never required. -> npc, display (either may be nil).
+function J.BossFace(e)
+  if type(e) ~= "table" or e.reason ~= "boss" then return nil end
+  local name = M.BossName(e)                             -- nil for a BiS Shell game's chapter
+  local A = _G.BiSToolsAPI
+  if not (name and type(A) == "table" and A.major == 1 and type(A.BossFace) == "function") then return nil end
+  local ok, npc, disp = pcall(A.BossFace, name)
+  if not ok then return nil end
+  npc, disp = tonumber(npc), tonumber(disp)
+  if npc then
+    local d = ns.DB()
+    d.faces = type(d.faces) == "table" and d.faces or {}
+    d.faces[name] = npc
+    M.faceless = nil
+  end
+  return npc, (disp and disp > 0) and disp or nil
+end
+
 --- The creature's look, once it has drawn: a boss lies dead (J.DEAD - the death animation where the client has no
 --- "dead" pose), anyone else stands; and the camera, which a new model resets, so it is set only now.
 function J.Look(m, e)
@@ -853,6 +875,7 @@ function J.Postcard(e, p)
   local npc = M.Face(e)
   local display = type(e) == "table" and tonumber(e.display) or nil
   if display and display <= 0 then display = nil end
+  if not npc and not display then npc, display = J.BossFace(e) end
   if npc and not display then display = J.Codex(npc) end
   if npc or display then
     them:Show()                                          -- shown first: a hidden model loads nothing
