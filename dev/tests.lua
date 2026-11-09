@@ -2608,6 +2608,27 @@ end)()
   _G.BiSToolsAPI = { major = 1, CodexCreature = function() error("boom") end }
   J.Select(nil) J.Select(boss) run() run()
   H.ok(them._creature == 11502 and them:GetModelFileID() > 0, "a Codex that errors: the creature by its id")
+  -- A DUNGEON KILL KEEPS ONLY THE NAME (Arn, 8 Nov: "this shows the boss from adventure the ones from acutal dungeon
+  -- dont" - inside a dungeon the game hides the creature's id): BiS Tools' boss finder knows the face by name (API 6)
+  local named = { reason = "boss", detail = "Lord Pythas - fastest yet, 0:30", at = os.time() - 5, char = M.Me() }
+  log[#log + 1] = named
+  local asked
+  _G.BiSToolsAPI = { major = 1, version = 6,
+    BossFace = function(n) asked = n return n == "Lord Pythas" and 3670 or nil, 4214 end }
+  HARNESS.knownCreature[3670] = true
+  J.Select(nil) J.Select(named) run()
+  H.ok(asked == "Lord Pythas" and them:IsShown() and (them._display == 4214 or them._creature == 3670),
+       "a boss with only its name: BiS Tools finds its face by name, and the postcard draws it", tostring(asked))
+  H.eq(NS.DB().faces and NS.DB().faces["Lord Pythas"], 3670, "and the face is kept: asked once")
+  asked = nil
+  local game = { reason = "boss", detail = "ADVENT.EXE: Taragaman's Pit beaten", at = os.time() - 4, char = M.Me() }
+  log[#log + 1] = game
+  J.Select(nil) J.Select(game) run()
+  H.ok(asked == nil, "an ADVENT chapter is never looked up as a dungeon boss")
+  _G.BiSToolsAPI = { major = 1, version = 6, BossFace = function() error("boom") end }
+  NS.DB().faces["Lord Pythas"] = nil
+  H.ok(pcall(function() J.Select(nil) J.Select(named) run() end), "a BossFace that errors: no error here")
+  table.remove(log) table.remove(log)
   _G.BiSToolsAPI = nil
   -- a stale look: another memory chosen before the moment came does not touch the model
   -- painted while shut (a memory landing, /bism wow): the hidden model drew nothing - opening asks again

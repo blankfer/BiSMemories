@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Dungeon bosses show on their postcards again.** Inside a dungeon the game keeps the boss's identity hidden at the moment you kill it, so a kill's memory only knew the name and the postcard stood you there alone. With BiS Tools installed, the boss is now found by its name (BiS Tools' boss finder and Codex know them), drawn lying at your feet, and remembered for next time.
+
 - **The album page is a night flight now.** Open the album and you look out through a cockpit windscreen at a neon sunset over the grid, with a city on the skyline. Under it is a dash in stitched leather with a walnut and brass rail. Every picture sits in its own black glass screen, the search box is a flight computer's green scratchpad, and the counts are cockpit keys that light up pink when you pick one. Each night has its own heading, marked like a waypoint. It works the same as before; only the look is new, and it still works with the internet unplugged.
 
 - **Share cards: a memory as one picture to post anywhere.** Press SHARE on the journal or in the lounge (or type `/bism share`, or `/bism share 3` for an older one). For a moment the whole screen becomes that memory's boarding pass, big and alone: the boss, where and when, how long it took, who was with you and the loot that dropped. One screenshot, then everything comes back.
