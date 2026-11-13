@@ -50,6 +50,23 @@ function ns.Print(fmt, ...)
   DEFAULT_CHAT_FRAME:AddMessage(T.text("accent", ADDON) .. " " .. msg)
 end
 
+--- A GAMEPAD IN USE (13 Nov 2026, a player on CurseForge: "blocked" every so often, only with a gamepad). Then our
+--- windows stay out of UISpecialFrames (Escape's list): the gamepad UI walks it from Blizzard's own code, and an
+--- addon's name in it is blamed for what follows (FojjiCore skips the insert the same way, solved.md). C_GamePad.IsEnabled
+--- is on both censuses; FojjiCore's C_InputInterfaceStyle is on neither.
+function ns.Gamepad()
+  local G = _G.C_GamePad
+  if not (G and G.IsEnabled) then return false end
+  local ok, on = pcall(G.IsEnabled)
+  return ok and on == true
+end
+
+--- Escape closes it - unless a gamepad is in use (ns.Gamepad); the window's own X always does.
+function ns.EscapeCloses(name)
+  if UISpecialFrames and not ns.Gamepad() then table.insert(UISpecialFrames, name) return true end
+  return false
+end
+
 ns.DEFAULTS = { comm = true }
 local function db()
   BiSMemoriesDB = type(BiSMemoriesDB) == "table" and BiSMemoriesDB or {}

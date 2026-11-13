@@ -886,7 +886,7 @@ function L.Build()
   L.parts = { board = L.board, seat = L.seat, surround = L.surround, pass = L.pass.frame, card = L.card.frame,
               sign = L.sign.frame, call = L.call.frame, share = L.shareRow, map = L.paper, gauges = L.fe }
   -- ESCAPE CLOSES IT (the family's rule); a FIGHT closes it at once
-  if UISpecialFrames then table.insert(UISpecialFrames, "BiSMemoriesLounge") end
+  ns.EscapeCloses("BiSMemoriesLounge")
   back:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_DISABLED" then
       L.Hide()

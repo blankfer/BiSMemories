@@ -675,7 +675,7 @@ local function build()
     if ns.MapView then ns.MapView.StopDrag(f.map) end
     f.post.postFor = nil
   end)
-  if UISpecialFrames then table.insert(UISpecialFrames, "BiSMemoriesJournal") end
+  ns.EscapeCloses("BiSMemoriesJournal")
   f:Hide()
   J.frame = f
   J.page = J.page or "memories"

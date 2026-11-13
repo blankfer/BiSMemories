@@ -399,7 +399,7 @@ function S.Build()
   buildMain(t)
   buildStub(t)
   -- ESCAPE PUTS IT AWAY (the family's rule); A FIGHT does, at once
-  if UISpecialFrames then table.insert(UISpecialFrames, "BiSMemoriesShare") end
+  ns.EscapeCloses("BiSMemoriesShare")
   back:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_DISABLED" then S.Close("fight") end
   end)
