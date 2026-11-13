@@ -112,7 +112,7 @@ H.ok(NS.firstRun == "new" and _G.BiSMemoriesDB.sound == false, "the suite's firs
 for k, v in pairs(NS.WAS) do _G.BiSMemoriesDB[k] = v end
 
 H.section("embedded libs are canon (drift fences)")
-H.eq(_G.LibBiSComm.MINOR, 18, "LibBiSComm minor 18")
+H.eq(_G.LibBiSComm.MINOR, 19, "LibBiSComm minor 19")
 local function listed(rel) for _, f in ipairs(FILES) do if f == rel then return true end end return false end
 H.ok(listed("Libs/BiSTheme/Console.lua"), "TOC lists the Console embed")
 H.ok(listed("Libs/LibBiSComm-1.0/LibBiSComm-1.0.lua"), "TOC lists the comm embed")
@@ -3919,6 +3919,56 @@ end)()
   J.Hide()
   _G.C_Timer, _G.Screenshot, _G.UnitClass, _G.UnitRace, _G.GetTime = keepTimer, keepShot, keepClass, keepRace, keepTime
   UIParent._w, UIParent._h = keepW, keepH
+end)()
+
+--------------------------------------------------------------------
+-- 13 Nov 2026: a player on CurseForge - "blocked" every so often, only with a gamepad, gone after a /reload
+--------------------------------------------------------------------
+;(function()
+  H.section("13 Nov: a gamepad - Escape's list left alone, and a 'blocked' note kept")
+  local M, d = NS.M, NS.DB()
+  local keepPad = _G.C_GamePad
+
+  -- ESCAPE'S LIST: with a gamepad in use our windows stay out of it (the gamepad UI walks it from Blizzard's code)
+  _G.C_GamePad = { IsEnabled = function() return true end }
+  local before = #_G.UISpecialFrames
+  H.eq(NS.EscapeCloses("BiSMemoriesPadTest"), false, "gamepad on: not put on Escape's list")
+  H.eq(#_G.UISpecialFrames, before, "and the list is untouched")
+  _G.C_GamePad = { IsEnabled = function() error("refused") end }
+  H.eq(NS.Gamepad(), false, "a gamepad check that throws counts as no gamepad")
+  _G.C_GamePad = nil
+  H.eq(NS.EscapeCloses("BiSMemoriesPadTest"), true, "no gamepad: Escape closes it, as before")
+  H.eq(_G.UISpecialFrames[#_G.UISpecialFrames], "BiSMemoriesPadTest", "on the list")
+  table.remove(_G.UISpecialFrames)
+  for _, file in ipairs({ "Core/Journal.lua", "Core/Lounge.lua", "Core/Share.lua" }) do
+    local src = bytes(ROOT .. "/" .. file) or ""
+    H.ok(not src:find("table.insert(UISpecialFrames", 1, true) and src:find("ns.EscapeCloses(", 1, true),
+         file .. ": its window goes through ns.EscapeCloses")
+  end
+
+  -- THE NOTE: the client names us in ADDON_ACTION_FORBIDDEN - when, what, after what, gamepad or not; across a reload
+  d.blocked = nil
+  _G.C_GamePad = { IsEnabled = function() return true end }
+  M.OnEvent("ZONE_CHANGED")
+  fire("ADDON_ACTION_FORBIDDEN", "SomeoneElse", "UNKNOWN()")
+  H.eq(d.blocked, nil, "another addon's dialog: nothing kept")
+  fire("ADDON_ACTION_FORBIDDEN", "BiSMemories", "UNKNOWN()")
+  local b = d.blocked and d.blocked[1]
+  H.ok(b and b.kind == "forbidden" and b.what == "UNKNOWN()" and b.pad == true, "ours: kept, with what and the gamepad",
+       b and (b.kind .. " " .. b.what) or "nothing")
+  H.ok(b and b.after:find("zone changed", 1, true) == nil and b.after:find("ZONE_CHANGED", 1, true),
+       "and the last thing the camera heard", b and b.after)
+  for _ = 1, 7 do fire("ADDON_ACTION_BLOCKED", "BiSMemories", "SetAlpha()") end
+  H.eq(#d.blocked, M.BLOCKED_KEEP, "kept to " .. M.BLOCKED_KEEP)
+  H.eq(d.blocked[1].kind, "blocked", "newest first")
+  said = {}
+  _G.SlashCmdList.BISMEMORIES("heard")
+  local out = table.concat(said, "\n")
+  H.ok(out:find("blocked", 1, true) and out:find("SetAlpha()", 1, true) and out:find("gamepad on", 1, true),
+       "/bism heard shows them", out)
+  H.ok(not out:find("addon action", 1, true), "and they are not on the 'not heard at all' list")
+  d.blocked = nil
+  _G.C_GamePad = keepPad
 end)()
 
 H.report()

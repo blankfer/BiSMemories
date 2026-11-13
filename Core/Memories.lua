@@ -1175,8 +1175,35 @@ function M.Decide(event, ...)
   return nil, "ignored"
 end
 
+--- "BLOCKED" NOTES (13 Nov 2026, a player on a gamepad). The client's "blocked from an action only available to the
+--- Blizzard UI" names the addon, never what was going on (solved.md: breadcrumbs ARE the diagnosis). So when it names
+--- us, keep when, what the client said, the last thing the camera heard, and whether a gamepad was in use - in the
+--- save (`db().blocked`, newest first, M.BLOCKED_KEEP), because the player's way out is a /reload. `/bism heard`.
+M.BLOCKED_KEEP = 5
+function M.Blocked(kind, addon, what)
+  if addon ~= ADDON then return nil end
+  local d = db()
+  d.blocked = type(d.blocked) == "table" and d.blocked or {}
+  local top = M.recent[1]
+  local note = {
+    at = (time and time()) or 0,
+    kind = kind == "ADDON_ACTION_FORBIDDEN" and "forbidden" or "blocked",
+    what = type(plain(what)) == "string" and plain(what) or "?",
+    after = top and (top.event .. ": " .. tostring(top.why)) or "nothing heard yet",
+    pad = ns.Gamepad and ns.Gamepad() or false,
+  }
+  table.insert(d.blocked, 1, note)
+  for i = #d.blocked, M.BLOCKED_KEEP + 1, -1 do d.blocked[i] = nil end
+  return note
+end
+
 function M.Start()
   if M.frame then return M.frame end
+  -- registered here, at load, and never again (an event switched from a timer is itself refused on a gamepad)
+  local watch = CreateFrame("Frame")
+  for _, e in ipairs({ "ADDON_ACTION_FORBIDDEN", "ADDON_ACTION_BLOCKED" }) do pcall(watch.RegisterEvent, watch, e) end
+  watch:SetScript("OnEvent", function(_, event, addon, what) pcall(M.Blocked, event, addon, what) end)
+  M.blockWatch = watch
   local f = CreateFrame("Frame")
   for _, e in ipairs(EVENTS) do
     pcall(f.RegisterEvent, f, e)     -- ten expansions apart: an unknown event must not abort

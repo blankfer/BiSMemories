@@ -117,6 +117,15 @@ local function heard()
       r.why == "TOOK ONE" and T.text("good", "took one") or T.text("muted", r.why))
   end
 
+  -- the client's "blocked" dialog, when it named us (M.Blocked) - kept across a reload, newest first
+  local blocked = type(ns.DB().blocked) == "table" and ns.DB().blocked or {}
+  for i = 1, #blocked do
+    local b = blocked[i]
+    ns.Print("  %s %s %s - after %s%s", T.text("warn", b.kind or "blocked"),
+      date and date("%d %b %H:%M", b.at or 0) or "", tostring(b.what), tostring(b.after),
+      b.pad and ", gamepad on" or "")
+  end
+
   local quiet = M.Unheard and M.Unheard() or {}
   if #quiet > 0 then
     ns.Print("not heard at all: %s", T.text("warn", table.concat(quiet, ", "):lower():gsub("_", " ")))

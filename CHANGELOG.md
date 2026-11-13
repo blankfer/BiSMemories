@@ -1,5 +1,11 @@
 # BiSMemories
 
+## 1.1.1
+
+- **Gamepad players: no more "blocked" pop-ups.** With a gamepad, the game could stop BiS> Memories every so often and offer to turn it off, until a /reload. The addons' shared group code switched some of its listening on and off as you joined and left groups, and the game refuses that while a gamepad is in use. It now sets everything up once, at login. Thanks to the player who reported it.
+- With a gamepad in use, the journal, the lounge and the share card close with their own X button, not Escape (the gamepad's menus use that list).
+- If the game ever does block BiS> Memories again, `/bism heard` now shows when it happened and what the camera was doing just before - paste that to us and we can fix it.
+
 ## 1.1.0
 
 - **Dungeon bosses show on their postcards again.** Inside a dungeon the game keeps the boss's identity hidden at the moment you kill it, so a kill's memory only knew the name and the postcard stood you there alone. With BiS Tools installed, the boss is now found by its name (BiS Tools' boss finder and Codex know them), drawn lying at your feet, and remembered for next time.
