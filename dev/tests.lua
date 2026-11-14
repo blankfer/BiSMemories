@@ -112,7 +112,7 @@ H.ok(NS.firstRun == "new" and _G.BiSMemoriesDB.sound == false, "the suite's firs
 for k, v in pairs(NS.WAS) do _G.BiSMemoriesDB[k] = v end
 
 H.section("embedded libs are canon (drift fences)")
-H.eq(_G.LibBiSComm.MINOR, 19, "LibBiSComm minor 19")
+H.eq(_G.LibBiSComm.MINOR, 20, "LibBiSComm minor 20")
 local function listed(rel) for _, f in ipairs(FILES) do if f == rel then return true end end return false end
 H.ok(listed("Libs/BiSTheme/Console.lua"), "TOC lists the Console embed")
 H.ok(listed("Libs/LibBiSComm-1.0/LibBiSComm-1.0.lua"), "TOC lists the comm embed")
@@ -580,6 +580,39 @@ do
   H.eq(shot, 3, "at most three new-place pictures in one session")
   H.ok(M.Char().zones["Place 8"] == true,
        "but all eight are written down, so none of them is new tomorrow")
+  M.zoneShots = 0
+end
+
+do -- NOT THE INSTANT YOU CROSS (Arn, 13 Nov 2026): the new place waits for the world to draw in, and only if you stay
+  local keepTimer, keepZone = _G.C_Timer, _G.GetRealZoneText
+  local q = {}
+  _G.C_Timer = { After = function(t, fn) q[#q + 1] = { t = t, fn = fn } end }
+  local function settle()
+    for i, t in ipairs(q) do
+      if t.t == M.ZONE_SETTLE then table.remove(q, i) t.fn() return true end
+    end
+  end
+  M.zoneShots = 0
+  M.Char().zones["Settle One"] = nil
+  M.Char().zones["Settle Two"] = nil
+  clock = clock + 100
+  _G.GetRealZoneText = function() return "Settle One" end
+  local before = #M.Log()
+  local e, why = M.OnEvent("ZONE_CHANGED_NEW_AREA")
+  H.ok(e == nil and why == "settling", "a new place is not taken at the crossing")
+  H.eq(#M.Log(), before, "no picture yet")
+  H.ok(M.Char().zones["Settle One"] == true, "but it is written down at once")
+  H.ok(settle(), "it waits ZONE_SETTLE seconds")
+  H.eq(#M.Log(), before + 1, "still there after the wait: the picture is taken")
+  H.eq(M.Log()[1].detail, "Settle One", "of the place you settled in")
+
+  clock = clock + 100
+  _G.GetRealZoneText = function() return "Settle Two" end
+  M.OnEvent("ZONE_CHANGED_NEW_AREA")
+  _G.GetRealZoneText = function() return "Settle Three" end
+  H.ok(settle(), "the wait runs out")
+  H.eq(#M.Log(), before + 1, "flown straight through: no picture")
+  _G.C_Timer, _G.GetRealZoneText = keepTimer, keepZone
   M.zoneShots = 0
 end
 

@@ -1,5 +1,9 @@
 # BiSMemories
 
+## 1.1.2
+
+- **New places are photographed once you have arrived, not at the border.** The picture of a new zone now waits a few seconds after you cross into it, so the world has finished drawing in, and is skipped if you have already flown on through.
+
 ## 1.1.1
 
 - **Gamepad players: no more "blocked" pop-ups.** With a gamepad, the game could stop BiS> Memories every so often and offer to turn it off, until a /reload. The addons' shared group code switched some of its listening on and off as you joined and left groups, and the game refuses that while a gamepad is in use. It now sets everything up once, at login. Thanks to the player who reported it.
