@@ -1,6 +1,6 @@
 # BiSMemories
 
-## Unreleased
+## 1.1.2
 
 - **New places are photographed once you have arrived, not at the border.** The picture of a new zone now waits a few seconds after you cross into it, so the world has finished drawing in, and is skipped if you have already flown on through.
 
