@@ -680,6 +680,21 @@ function M.NewZone(name)
   return name
 end
 
+--- NOT THE INSTANT YOU CROSS (Arn, 13 Nov 2026: "maybe we dont immediately take a screen shot entering a new area").
+--- ZONE_CHANGED_NEW_AREA speaks the moment a border or a loading screen is passed, while the world is still drawing in
+--- around you - the picture caught half-loaded ground and asked the graphics card for a shot at its busiest. So the
+--- new place waits `M.ZONE_SETTLE` seconds and is taken only if you are still there: flying straight through a corner
+--- of a zone is no memory of it. The place is written down either way (M.NewZone did that).
+M.ZONE_SETTLE = 6
+function M.SettleZone(zone)
+  if not (C_Timer and C_Timer.After) then return M.Shoot("zone", zone) end
+  C_Timer.After(M.ZONE_SETTLE, function()
+    if realZone() ~= zone then return end            -- gone on already
+    M.Shoot("zone", zone)
+  end)
+  return nil, "settling"
+end
+
 --- The client's own sentence, turned into a Lua pattern.
 ---
 --- Two shapes exist and BOTH are real: "%s has defeated %s in a duel" on TBC, and
@@ -1126,7 +1141,7 @@ function M.Decide(event, ...)
   elseif event == "ZONE_CHANGED_NEW_AREA" then
     local zone, why = M.NewZone(realZone())
     if not zone then return nil, why or "been here" end
-    return M.Shoot("zone", zone)
+    return M.SettleZone(zone)
 
   -- THE QUIET ONES, which only ever teach it where you are. They fire on crossings the big one
   -- misses - and every zone written down here is a picture NOT taken later for somewhere you
