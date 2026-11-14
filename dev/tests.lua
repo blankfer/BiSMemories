@@ -583,6 +583,39 @@ do
   M.zoneShots = 0
 end
 
+do -- NOT THE INSTANT YOU CROSS (Arn, 13 Nov 2026): the new place waits for the world to draw in, and only if you stay
+  local keepTimer, keepZone = _G.C_Timer, _G.GetRealZoneText
+  local q = {}
+  _G.C_Timer = { After = function(t, fn) q[#q + 1] = { t = t, fn = fn } end }
+  local function settle()
+    for i, t in ipairs(q) do
+      if t.t == M.ZONE_SETTLE then table.remove(q, i) t.fn() return true end
+    end
+  end
+  M.zoneShots = 0
+  M.Char().zones["Settle One"] = nil
+  M.Char().zones["Settle Two"] = nil
+  clock = clock + 100
+  _G.GetRealZoneText = function() return "Settle One" end
+  local before = #M.Log()
+  local e, why = M.OnEvent("ZONE_CHANGED_NEW_AREA")
+  H.ok(e == nil and why == "settling", "a new place is not taken at the crossing")
+  H.eq(#M.Log(), before, "no picture yet")
+  H.ok(M.Char().zones["Settle One"] == true, "but it is written down at once")
+  H.ok(settle(), "it waits ZONE_SETTLE seconds")
+  H.eq(#M.Log(), before + 1, "still there after the wait: the picture is taken")
+  H.eq(M.Log()[1].detail, "Settle One", "of the place you settled in")
+
+  clock = clock + 100
+  _G.GetRealZoneText = function() return "Settle Two" end
+  M.OnEvent("ZONE_CHANGED_NEW_AREA")
+  _G.GetRealZoneText = function() return "Settle Three" end
+  H.ok(settle(), "the wait runs out")
+  H.eq(#M.Log(), before + 1, "flown straight through: no picture")
+  _G.C_Timer, _G.GetRealZoneText = keepTimer, keepZone
+  M.zoneShots = 0
+end
+
 _G.UnitName = function(u) return u == "player" and "Kumlust Surname" or "Someone" end
 -- TBC writes "%s has defeated %s"; WoW Forever writes "%1$s has defeated %2$s" (seen in game,
 -- 18 Sep 2026) so a translator can swap the names round. A builder that knows only %s turns %1$s
