@@ -3379,7 +3379,10 @@ end)()
   said0 = #said
   fire("PLAYER_REGEN_DISABLED")
   H.ok(not L.back:IsShown(), "a fight shuts it at once")
-  H.ok(not L.back._events.PLAYER_REGEN_DISABLED, "shut: it listens for nothing")
+  H.ok(L.back._events.PLAYER_REGEN_DISABLED, "shut: still registered (once, at build - never (un)registered later: gamepad)")
+  said0 = #said
+  fire("PLAYER_REGEN_DISABLED")
+  H.ok(not L.back:IsShown() and #said == said0, "shut, a fight starting does nothing")
   _G.InCombatLockdown = function() return true end
   H.ok(L.Show() == false and not L.back:IsShown(), "in a fight it does not open")
   H.ok(#said > said0, "and says why")
@@ -3672,7 +3675,7 @@ end)()
   settle()
   H.eq(#snaps, n0, "and no picture is taken after it")
   H.eq(UIParent:GetAlpha(), 1, "the interface is there for the fight")
-  H.ok(not back._events.PLAYER_REGEN_DISABLED, "shut, it listens for nothing")
+  H.ok(back._events.PLAYER_REGEN_DISABLED, "shut: still registered (once, at build - never (un)registered later: gamepad)")
   -- a fight that starts after the shutter, before the client answers: the interface comes back at once
   S.Take(boss)
   untilShot()

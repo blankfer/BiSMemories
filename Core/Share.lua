@@ -400,8 +400,11 @@ function S.Build()
   buildStub(t)
   -- ESCAPE PUTS IT AWAY (the family's rule); A FIGHT does, at once
   ns.EscapeCloses("BiSMemoriesShare")
-  back:SetScript("OnEvent", function(_, event)
-    if event == "PLAYER_REGEN_DISABLED" then S.Close("fight") end
+  -- (gamepad audit, 15 Nov 2026: registered ONCE here and read only while shown - a (un)register from a timer is
+  -- "blocked" on Forever while the gamepad UI is on, and S.Close / L.Hide can come from one)
+  back:RegisterEvent("PLAYER_REGEN_DISABLED")
+  back:SetScript("OnEvent", function(self, event)
+    if event == "PLAYER_REGEN_DISABLED" and self:IsShown() then S.Close("fight") end
   end)
   back:Hide()
   back:SetScript("OnHide", function(self) S.OnHide(self) end)   -- set after that first Hide (a frame is made shown)
@@ -510,7 +513,6 @@ function S.Take(e, opts)
   for _, tr in ipairs(S.trim) do tr:SetHeight(px(S.TRIM) * k) end
   S.Fonts(k)
   back:Show()                                            -- shown before the postcard: a hidden model loads nothing
-  back:RegisterEvent("PLAYER_REGEN_DISABLED")
   S.entry = e
   local v = S.Fields(e, J.Entries(), hide)
   S.Paint(v)
@@ -569,7 +571,6 @@ function S.Close(why)
 end
 
 function S.OnHide(self)
-  self:UnregisterEvent("PLAYER_REGEN_DISABLED")
   S.token = (S.token or 0) + 1                           -- whatever was waiting finds its card gone
   S.post.postFor = nil
   local why, was = S.why, S.was
