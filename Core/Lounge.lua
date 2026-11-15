@@ -887,8 +887,11 @@ function L.Build()
               sign = L.sign.frame, call = L.call.frame, share = L.shareRow, map = L.paper, gauges = L.fe }
   -- ESCAPE CLOSES IT (the family's rule); a FIGHT closes it at once
   ns.EscapeCloses("BiSMemoriesLounge")
-  back:SetScript("OnEvent", function(_, event)
-    if event == "PLAYER_REGEN_DISABLED" then
+  -- (gamepad audit, 15 Nov 2026: registered ONCE here and read only while shown - a (un)register from a timer is
+  -- "blocked" on Forever while the gamepad UI is on, and S.Close / L.Hide can come from one)
+  back:RegisterEvent("PLAYER_REGEN_DISABLED")
+  back:SetScript("OnEvent", function(self, event)
+    if event == "PLAYER_REGEN_DISABLED" and self:IsShown() then
       L.Hide()
       ns.Print("the lounge closed for the fight")
     end
@@ -900,7 +903,6 @@ function L.Build()
     L.StopFlip()
     L.StopSwing()
     if ns.MapView and L.map then ns.MapView.StopDrag(L.map) end
-    self:UnregisterEvent("PLAYER_REGEN_DISABLED")
     L.post.postFor = nil
   end)
   return back
@@ -1236,7 +1238,6 @@ function L.Show()
   L.room:SetScale(k)
   L.Fonts(k)
   back:Show()                                  -- shown before it is painted: a hidden model loads nothing
-  back:RegisterEvent("PLAYER_REGEN_DISABLED")
   L.post.postFor = nil
   L.list = J.Entries()
   local found = false
