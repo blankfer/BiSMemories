@@ -11,7 +11,12 @@ Read ../_bisdev/CLAUDE.md first.
 - `Core/Memories.lua`: the camera - triggers (`M.TRIGGERS`, plain words `M.Word`), `M.Shoot` (each note
   carries the character, class/race, map spot `M.Spot`, gear ids `M.Gear`, and extras: npc, killer, secs),
   clean shots (`M.Clean`, SetUIVisibility), per-character books `M.Char()` = `d.chars["Name-Realm"]`
-  {zones, bosses, firsts, gambaBest} (the pre-0.9.0 shared `d.zones` goes once to the main, `M.Inherit`),
+  {zones, bosses, firsts, gambaBest, owner} (the pre-0.9.0 shared `d.zones` goes once to the main, `M.Inherit`).
+  NO REALM on Forever since 21 Nov 2026 (1.60.1 LU2: GetRealmName ""): `M.KeyFor` keeps the character's ONE existing
+  "Name-<realm>" key (a book or a note; a book's `owner` = whole name from `M.Whole`, never taken by another whole
+  name), else "Name-" (new, or two realms = no guess); `M.FoldStray` folds the bug's "Name-?" (and a "Name-") in
+  once via `M.MergeBook` (union, earliest firsts, kills add, best lowest, gamba highest), notes re-owned, the stray
+  books kept in `d.keptBeforeRealmFix`. The suite's GetRealmName answers "" (top of dev/tests.lua),
   bosses = first kill + fastest yet (`M.BossKill`, ENCOUNTER_START timing), deaths worth keeping
   (`M.Death`: C_DeathRecap killer, BiSToolsAPI.IsRival, in a boss fight, first death), firsts (mount,
   riding), the biggest BiS Gamba win (BiSGambaAPI callback). `M.OnEvent` scrubs secrets, then `M.Decide`.

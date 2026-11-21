@@ -24,7 +24,9 @@
 --     shot   = true | false | nil,                    -- the client said the picture saved / failed
 --     from   = "BiSGuild" | nil,                      -- the addon that asked, for API memories
 --     -- since version 2 (0.9.0), each when known:
---     char   = "Kumlust-Dreamscythe",                 -- whose memory it is (name-realm)
+--     char   = "Kumlust-Dreamscythe",                 -- whose memory it is (name-realm; on Forever since 21 Nov
+--                                                     -- 2026 no realm is given: a character keeps the one
+--                                                     -- "Name-Realm" they had, a new one is "Name-")
 --     class  = "SHAMAN", race = "Tauren",             -- UnitClass / UnitRace tokens
 --     map = 1413, x = 0.51, y = 0.30,                 -- the client's map and the spot on it (none inside an instance)
 --     gear   = { [16] = 17182, ... },                 -- the item id in each slot a model shows

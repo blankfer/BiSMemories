@@ -1,5 +1,9 @@
 # BiSMemories
 
+## 1.1.3
+
+- **Your characters know themselves again after Forever's realm change.** Since today's game update (1.60.1, 21 November) the game no longer tells addons which realm you are on, so BiS> Memories filed every character under a new, empty name: your own older memories looked like someone else's, places you had been were "new" again, boss best times were forgotten, and a first death or first mount could be photographed a second time. Each character now keeps the name it already had, and whatever was noted under the empty one since the update is folded back in at your next login, with nothing to click: places and firsts from both (the earliest first kept), boss kills added up, the fastest time and the biggest gamba win kept. Nothing is thrown away: the stray copy is kept aside in the saved file.
+
 ## 1.1.2
 
 - **New places are photographed once you have arrived, not at the border.** The picture of a new zone now waits a few seconds after you cross into it, so the world has finished drawing in, and is skipped if you have already flown on through.
