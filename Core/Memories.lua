@@ -83,13 +83,30 @@ local realZone  -- below too
 -- anywhere the main had been. Now every note carries the character, and what a character has seen,
 -- killed and done first is kept under their own name (d.chars[key]).
 
---- This character's key, "Name-Realm", or nil while the client still calls them "Unknown". Kept once
---- known: a name does not change mid-session.
+local function foreverClient()
+  if type(_G.GetBuildInfo) == "function" then
+    local ok, _, _, _, interface = pcall(_G.GetBuildInfo)
+    if ok and type(interface) == "number" then return interface >= 16000 and interface < 20000 end
+  end
+  return _G.WOW_PROJECT_CAMELOT ~= nil and _G.WOW_PROJECT_ID == _G.WOW_PROJECT_CAMELOT
+end
+
+--- Forever has realmless, two-part names. Never cache a partial name while the client is still loading it.
+--- Other clients retain their original Name-Realm key.
 function M.Me()
   if M.me then return M.me end
-  local name = plain(UnitName and UnitName("player"))
-  local realm = plain(GetRealmName and GetRealmName())
+  local ok, name = pcall(function() return plain(UnitName and UnitName("player")) end)
+  if not ok then return nil end
   if type(name) ~= "string" or name == "" or name == (UNKNOWNOBJECT or "Unknown") then return nil end
+  if foreverClient() then
+    local fullOK, full = pcall(function() return plain(GetUnitName and GetUnitName("player", false)) end)
+    if not fullOK or type(full) ~= "string" or full:sub(1, #name + 1) ~= name .. " "
+      or full:sub(#name + 2):match("^%s*$") then return nil end
+    M.me = full .. "-?"
+    return M.me
+  end
+  local realmOK, realm = pcall(function() return plain(GetRealmName and GetRealmName()) end)
+  if not realmOK then realm = nil end
   M.me = name .. "-" .. (type(realm) == "string" and realm ~= "" and realm or "?")
   return M.me
 end
@@ -114,6 +131,90 @@ function M.Char()
   c.bosses = type(c.bosses) == "table" and c.bosses or {}
   c.firsts = type(c.firsts) == "table" and c.firsts or {}
   return c
+end
+
+--- Legacy Forever keys contain only a first name. They cannot prove ownership, so list them for confirmation.
+function M.LegacyKeys()
+  if not foreverClient() then return {} end
+  local me = M.Me()
+  if not me then return {} end
+  local first = me:match("^(%S+) ")
+  if not first then return {} end
+  local d, keys = db(), {}
+  local claimed = type(d.legacyClaims) == "table" and d.legacyClaims or {}
+  local function add(key)
+    if type(key) == "string" and key:sub(1, #first + 1) == first .. "-"
+      and #key > #first + 1 and not claimed[key] then keys[key] = true end
+  end
+  for key in pairs(type(d.chars) == "table" and d.chars or {}) do add(key) end
+  for _, e in ipairs(type(d.log) == "table" and d.log or {}) do
+    if type(e) == "table" then add(e.char) end
+  end
+  local result = {}
+  for key in pairs(keys) do result[#result + 1] = key end
+  table.sort(result)
+  return result
+end
+
+local function copyLegacy(value)
+  if type(value) ~= "table" then return value end
+  local result = {}
+  for k, v in pairs(value) do result[k] = copyLegacy(v) end
+  return result
+end
+
+--- Keep the original book as a backup; a claimed key can never be assigned to a second character.
+function M.ClaimLegacy(key)
+  local me = M.Me()
+  if not me then return nil, "character not ready" end
+  local found = false
+  for _, candidate in ipairs(M.LegacyKeys()) do if candidate == key then found = true break end end
+  if not found then return nil, "no unclaimed matching key" end
+  local d, c = db(), M.Char()
+  local old = type(d.chars) == "table" and d.chars[key] or nil
+  if type(old) == "table" then
+    for _, field in ipairs({ "zones", "firsts" }) do
+      if type(old[field]) == "table" then
+        for k, v in pairs(old[field]) do
+          if c[field][k] == nil then c[field][k] = copyLegacy(v)
+          elseif field == "firsts" and type(v) == "number" and type(c[field][k]) == "number" then
+            c[field][k] = math.min(c[field][k], v)
+          end
+        end
+      end
+    end
+    if type(old.bosses) == "table" then
+      for name, source in pairs(old.bosses) do
+        if type(source) == "table" then
+          local target = c.bosses[name]
+          if type(target) ~= "table" then target = {} c.bosses[name] = target end
+          for k, v in pairs(source) do if k ~= "at" and target[k] == nil then target[k] = copyLegacy(v) end end
+          if type(source.kills) == "number" and type(target.kills) == "number" then
+            target.kills = math.max(target.kills, source.kills)
+          end
+          if type(source.best) == "number" and type(target.best) == "number" then
+            target.best = math.min(target.best, source.best)
+          end
+          if type(source.first) == "number" and type(target.first) == "number" then
+            target.first = math.min(target.first, source.first)
+          end
+        end
+      end
+    end
+    if type(old.gambaBest) == "number" and (type(c.gambaBest) ~= "number" or old.gambaBest > c.gambaBest) then
+      c.gambaBest = old.gambaBest
+    end
+    for k, v in pairs(old) do if c[k] == nil then c[k] = copyLegacy(v) end end
+  end
+  local count = 0
+  for _, e in ipairs(M.Log()) do
+    if type(e) == "table" and e.char == key then e.char = me count = count + 1 end
+  end
+  d.legacyClaims = type(d.legacyClaims) == "table" and d.legacyClaims or {}
+  d.legacyClaims[key] = me
+  if ns.J and ns.J.Touch then ns.J.Touch() end
+  if ns.Pins and ns.Pins.Update then pcall(ns.Pins.Update) end
+  return count
 end
 
 --- THE OLD MEMORIES' OWNERS (Arn, 21 Oct 2026: "this level up is my rogue alt but it showed my main").
@@ -1174,6 +1275,12 @@ function M.Decide(event, ...)
 
   elseif event == "PLAYER_ENTERING_WORLD" then
     if not M.claimTried then M.claimTried = true M.ClaimOld() end   -- the old notes that are this character's
+    if not M.legacyNotified and M.Me() then
+      M.legacyNotified = true
+      if #M.LegacyKeys() > 0 then
+        ns.Print("older character keys may belong to you - /bism claim to review them")
+      end
+    end
     M.SeeZone(realZone())             -- wherever you logged in or zoned to, known from now on
     M.ArmCandid()                     -- a week up? book a moment somewhere in this session
     M.HookGamba()                     -- BiS Gamba's rounds, when it is installed

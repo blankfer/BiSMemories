@@ -28,6 +28,7 @@
       /bism pins mine|all|off   the world map's pins
       /bism onthisday · clean   on this day on/off; hide the interface for the picture on/off
       /bism db                  which saved copy came back at this login
+      /bism claim [key]         review and claim older Forever character keys
 
   Every command longer than 4 letters has a short word too (ns.SHORT, 6 Nov 2026): sound = snd,
   clear = clr, zones = zone, status = stat, heard = hear, journal = book, options = opt, group = grp,
@@ -173,7 +174,7 @@ end
 -- word a command answers to -> its long name.
 ns.SHORT = { sound = "snd", clear = "clr", zones = "zone", status = "stat", heard = "hear", journal = "book",
              options = "opt", group = "grp", onthisday = "otd", every = "each", clean = "cln", lounge = "lng",
-             share = "shr" }
+             share = "shr", claim = "clm" }
 ns.SLASH_WORD = { places = "zones", album = "journal", config = "options", settings = "options", cheese = "group",
                   where = "path", clipper = "lounge" }
 for long, short in pairs(ns.SHORT) do ns.SLASH_WORD[short] = long end
@@ -345,6 +346,28 @@ function ns.Slash(input)
   elseif cmd == "db" then
     dbCheck()
 
+  elseif cmd == "claim" then
+    local keys = M.LegacyKeys()
+    if rest == "" then
+      if #keys == 0 then
+        ns.Print("no unclaimed older keys for this character")
+      else
+        ns.Print("older keys for %s (first names alone cannot prove who took them):", M.Me())
+        for i, key in ipairs(keys) do ns.Print("  %d: %s", i, key) end
+        ns.Print("only if a key belongs to this character, use /bism claim <number> or /bism claim <key>")
+        ns.Print("a key shared by different characters cannot be separated automatically")
+      end
+    else
+      local n = tonumber(rest)
+      local key = n and keys[n] or rest
+      local count, why = M.ClaimLegacy(key)
+      if count then
+        ns.Print("claimed %s for %s: %d note(s); the old progress book was kept", key, M.Me(), count)
+      else
+        ns.Print("not claimed: %s - /bism claim to review available keys", tostring(why))
+      end
+    end
+
   -- WHERE THE ALBUM PAGE IS. An addon cannot know its own full path - there is no API for the
   -- install folder and none for the version folder either - so the certain part is printed, and
   -- `/memories wow <folder>` makes it whole and keeps it.
@@ -373,6 +396,6 @@ function ns.Slash(input)
     ns.Print("%s", T.text("muted",
       "/bism · all · now [note] · journal (book) · lounge (lng) · share (shr) [n] · map · year [all] · group (grp) · options (opt) · on|off <thing>"
       .. " · every (each) boss|death · pins mine|all|off · onthisday (otd) · clean (cln) · loot <2-5> · gap <secs>"
-      .. " · sound (snd) · clear (clr) · zones (zone) · status (stat) · heard (hear) · path · db"))
+      .. " · sound (snd) · clear (clr) · zones (zone) · status (stat) · heard (hear) · claim (clm) · path · db"))
   end
 end
