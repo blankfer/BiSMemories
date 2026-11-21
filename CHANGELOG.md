@@ -2,7 +2,7 @@
 
 ## Next
 
-- **Thanks to emilien-puget**, who spotted that Forever's realm change had split BiS> Memories' characters in two and opened a fix for it on GitHub (#64). That report is what brought it to our attention; the fix shipped in 1.1.3.
+- Spotted Forever's realm change splitting characters in two and sent a fix, which brought it to our attention - fixed in 1.1.3 ([emilien-puget](https://github.com/emilien-puget))
 
 ## 1.1.3
 
