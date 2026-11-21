@@ -4004,4 +4004,210 @@ end)()
   _G.C_GamePad = keepPad
 end)()
 
+--------------------------------------------------------------------
+-- Forever's two-part identity and the old, ambiguous character books
+--------------------------------------------------------------------
+;(function()
+  local M = NS.M
+  local keepDB, keepSaid = _G.BiSMemoriesDB, said
+  local keepBuild, keepName, keepFull, keepRealm = _G.GetBuildInfo, _G.UnitName, _G.GetUnitName, _G.GetRealmName
+  local keepMe, keepLog, keepNobody, keepFaceless = M.me, M.log, M.nobody, M.faceless
+  local keepTried, keepNotified, keepGamba, keepCandid = M.claimTried, M.legacyNotified, M.gambaHooked, M.candidArmed
+  local interface, first, full, realm = 16001, "Brynja", "Brynja Peigneultime", "Layer One"
+  local me, alt = "Brynja Peigneultime-?", "Brynja Autrenom-?"
+
+  local function run(label, fn)
+    local ok, err = pcall(fn)
+    H.ok(ok, label .. " does not throw", err)
+  end
+
+  local ok, err = pcall(function()
+    H.section("Forever: full identity and explicit legacy claims")
+    _G.GetBuildInfo = function() return "version", "build", "date", interface end
+    _G.UnitName = function(unit) if unit == "player" then return first end end
+    _G.GetUnitName = function(unit, showServerName)
+      if unit == "player" and showServerName == false then return full end
+    end
+    _G.GetRealmName = function() return realm end
+    _G.BiSMemoriesDB = { chars = {}, log = {} }
+    M.me, M.log, M.nobody, M.faceless = nil, nil, nil, nil
+
+    run("Forever identity", function()
+      H.eq(M.Me(), me, "Forever uses both names and a realmless suffix")
+      realm, M.me = "Another Layer", nil
+      H.eq(M.Me(), me, "changing layers does not change the Forever identity")
+      realm, M.me = nil, nil
+      H.eq(M.Me(), me, "a missing layer does not change the Forever identity")
+      full, M.me = nil, nil
+      H.eq(M.Me(), nil, "missing full name is not a partial identity")
+      H.eq(M.me, nil, "missing full name is not cached")
+      full = "Brynja"
+      H.eq(M.Me(), nil, "first name alone is not a full Forever name")
+      H.eq(M.me, nil, "a partial name is not cached")
+      full = "Brynja Peigneultime"
+      H.eq(M.Me(), me, "identity is retried when the full name arrives")
+      first, M.me = nil, nil
+      H.eq(M.Me(), nil, "missing first name does not make an identity")
+      H.eq(M.me, nil, "missing first name is not cached")
+      first = "Brynja"
+      H.eq(M.Me(), me, "identity is retried when the first name arrives")
+      full, M.me = "Brynja Autrenom", nil
+      H.eq(M.Me(), alt, "another surname has a distinct identity")
+      interface, realm, M.me = 20506, "Dreamscythe", nil
+      H.eq(M.Me(), "Brynja-Dreamscythe", "other clients retain name and realm")
+    end)
+
+    interface, first, full, realm, M.me = 16001, "Brynja", "Brynja Peigneultime", "Layer One", nil
+    local old = {
+      zones = { OldPlace = true, Shared = true }, firsts = { mount = 20, riding = 40 },
+      bosses = { Rag = { kills = 9, best = 80 }, Ony = { kills = 2, best = 200 }, OldBoss = { kills = 3, best = 70 } },
+      gambaBest = 500,
+      extra = { nested = { value = "old" } },
+    }
+    local current = {
+      zones = { CurrentPlace = true, Shared = true }, firsts = { death = 10, mount = 30 },
+      bosses = { Rag = { kills = 4, best = 100 }, Ony = { kills = 5, best = 150 }, CurrentBoss = { kills = 1, best = 60 } },
+      gambaBest = 200,
+    }
+    local d = { candid = false, onThisDay = false, chars = {
+      [me] = current, [alt] = { zones = { AltPlace = true }, firsts = {}, bosses = {} }, ["Brynja-?"] = old,
+      ["Brynja-EU PvP"] = { zones = { PvP = true }, firsts = {}, bosses = {}, gambaBest = 100 },
+      ["Brynja-Archive"] = { zones = {}, firsts = {}, bosses = {} },
+      ["Brynja-Claimed"] = { zones = {}, firsts = {}, bosses = {} },
+      ["Brynjana-Realm"] = { zones = { Wrong = true }, firsts = {}, bosses = {} },
+      ["Other-Realm"] = { zones = { Wrong = true }, firsts = {}, bosses = {} },
+    }, log = {
+      { char = "Brynja-?", detail = "one" }, { char = "Brynja-?", detail = "two" },
+      { char = "Brynja-EU PvP", detail = "layer" }, { char = "Brynja-LogOnly", detail = "log only" },
+      { char = "Brynjana-Realm" }, { char = "Other-Realm" }, { char = me }, { detail = "unnamed" }, { char = alt },
+    }, legacyClaims = { ["Brynja-Claimed"] = alt } }
+    _G.BiSMemoriesDB = d
+    M.log = nil
+
+    H.ok(type(M.LegacyKeys) == "function", "legacy discovery API exists")
+    H.ok(type(M.ClaimLegacy) == "function", "explicit legacy claim API exists")
+    if type(M.LegacyKeys) == "function" and type(M.ClaimLegacy) == "function" then
+      run("legacy discovery", function()
+        full, M.me = nil, nil
+        local keys = M.LegacyKeys()
+        H.ok(type(keys) == "table" and #keys == 0, "no legacy candidates without a full name")
+        H.eq(M.me, nil, "legacy discovery does not cache a missing name")
+        M.ClaimLegacy("Brynja-?")
+        H.eq(d.log[1].char, "Brynja-?", "a nameless claim cannot move notes")
+        H.eq(d.legacyClaims["Brynja-?"], nil, "a nameless claim cannot mark ownership")
+        full = "Brynja Peigneultime"
+        keys = M.LegacyKeys()
+        H.ok(type(keys) == "table" and #keys == 4, "discovery combines and deduplicates books and notes")
+        if type(keys) == "table" then
+          H.eq(table.concat(keys, ", "), "Brynja-?, Brynja-Archive, Brynja-EU PvP, Brynja-LogOnly",
+               "unclaimed exact-first-name keys are sorted")
+        end
+        M.Char()
+        H.eq(d.log[1].char, "Brynja-?", "discovery and opening the book never claim notes")
+        H.eq(current.zones.OldPlace, nil, "opening the book never merges legacy progress")
+        H.eq(d.legacyClaims["Brynja-?"], nil, "discovery never records a claim")
+      end)
+
+      run("entering the world", function()
+        full, M.me, M.claimTried, M.legacyNotified, M.gambaHooked = "Brynja Peigneultime", nil, nil, nil, true
+        M.Decide("PLAYER_ENTERING_WORLD")
+        H.eq(d.log[1].char, "Brynja-?", "login does not automatically claim old named notes")
+        H.eq(current.zones.OldPlace, nil, "login does not automatically merge an old book")
+        H.eq(d.legacyClaims["Brynja-?"], nil, "login does not automatically mark ownership")
+      end)
+
+      run("invalid legacy claims", function()
+        for _, key in ipairs({ "", "Brynja-", "Brynja-Missing", "Brynjana-Realm", "Other-Realm", me, "Brynja-Claimed" }) do
+          M.ClaimLegacy(key)
+          H.eq(d.legacyClaims[key], key == "Brynja-Claimed" and alt or nil, "invalid key is not claimed: " .. key)
+        end
+        M.ClaimLegacy(nil)
+        H.eq(d.log[1].char, "Brynja-?", "invalid claims leave matching notes alone")
+        H.eq(d.log[5].char, "Brynjana-Realm", "similar first names cannot be claimed")
+        H.eq(d.log[6].char, "Other-Realm", "other first names cannot be claimed")
+        H.eq(current.zones.Wrong, nil, "invalid claims do not merge another character's book")
+      end)
+
+      run("claim and merge", function()
+        M.ClaimLegacy("Brynja-?")
+        H.eq(d.log[1].char, me, "claim moves the first matching note")
+        H.eq(d.log[2].char, me, "claim moves every matching note")
+        H.eq(d.log[3].char, "Brynja-EU PvP", "claim does not move a different old key")
+        H.eq(d.log[5].char, "Brynjana-Realm", "claim leaves another first name alone")
+        H.eq(d.log[9].char, alt, "claim leaves a different surname's note alone")
+        H.eq(d.chars["Brynja-?"], old, "the original book is retained")
+        H.ok(old.zones.OldPlace and old.bosses.Rag.best == 80 and old.gambaBest == 500,
+             "the retained book still contains its original progress")
+        H.eq(d.legacyClaims["Brynja-?"], me, "claim records the new owner")
+        H.ok(current.zones.OldPlace and current.zones.CurrentPlace and current.zones.Shared, "zones are united")
+        H.ok(current.firsts.mount and current.firsts.riding and current.firsts.death, "firsts are united")
+        H.eq(current.firsts.riding, 40, "an old-only first is retained")
+        H.eq(current.firsts.death, 10, "a current-only first is retained")
+        H.ok(current.bosses.Rag and current.bosses.Rag.best == 80 and current.bosses.Rag.kills == 9,
+             "boss merge keeps the old fastest time and higher kill count")
+        H.ok(current.bosses.Ony and current.bosses.Ony.best == 150 and current.bosses.Ony.kills == 5,
+             "boss merge keeps the current fastest time and higher kill count")
+        H.ok(current.bosses.OldBoss and current.bosses.CurrentBoss, "bosses from both books are kept")
+        H.eq(current.gambaBest, 500, "gamba merge keeps the larger win")
+        current.extra.nested.value = "new"
+        H.eq(old.extra.nested.value, "old", "the retained book does not share nested metadata with the merged book")
+        local keys = M.LegacyKeys()
+        H.ok(type(keys) == "table" and not table.concat(keys, ", "):find("Brynja-?", 1, true),
+             "claimed key no longer appears in discovery")
+        old.zones.AfterClaim, old.gambaBest = true, 999
+        M.ClaimLegacy("Brynja-?")
+        H.eq(current.zones.AfterClaim, nil, "claiming twice does not merge the retained book again")
+        H.eq(current.gambaBest, 500, "claiming twice does not update progress again")
+        H.eq(d.legacyClaims["Brynja-?"], me, "claiming twice preserves ownership")
+      end)
+
+      run("surname alt cannot reassign", function()
+        full, M.me = "Brynja Autrenom", nil
+        H.eq(M.Me(), alt, "the alt gets its own full identity")
+        M.ClaimLegacy("Brynja-?")
+        H.eq(d.log[1].char, me, "the alt cannot take already claimed notes")
+        H.eq(d.legacyClaims["Brynja-?"], me, "the alt cannot take ownership of the old key")
+        local c = d.chars[alt]
+        H.ok(not c or not (c.zones and c.zones.OldPlace), "the alt does not receive the claimed book")
+        full, M.me = "Brynja Peigneultime", nil
+      end)
+
+      run("claim slash command", function()
+        full, M.me, said = "Brynja Peigneultime", nil, {}
+        _G.SlashCmdList.BISMEMORIES("claim")
+        local out = table.concat(said, "\n")
+        H.ok(out:find("Brynja-EU PvP", 1, true) and out:find("Brynja-LogOnly", 1, true),
+             "/bism claim displays unclaimed keys including spaces", out)
+        H.eq(d.log[3].char, "Brynja-EU PvP", "listing through slash does not claim")
+        H.eq(d.legacyClaims["Brynja-EU PvP"], nil, "listing through slash does not mark a claim")
+        _G.SlashCmdList.BISMEMORIES("claim Brynja-EU PvP")
+        H.eq(d.log[3].char, me, "/bism claim accepts a key containing spaces")
+        H.eq(d.legacyClaims["Brynja-EU PvP"], me, "slash claim records ownership")
+        H.ok(current.zones.PvP, "slash claim merges the old book")
+        H.eq(current.gambaBest, 500, "slash claim does not replace a larger current win")
+        _G.SlashCmdList.BISMEMORIES("claim 1")
+        H.eq(d.legacyClaims["Brynja-Archive"], me, "slash claim accepts the numbered key from its list")
+      end)
+
+      run("log-only legacy claim", function()
+        full, M.me = "Brynja Peigneultime", nil
+        M.ClaimLegacy("Brynja-LogOnly")
+        H.eq(d.log[4].char, me, "a log-only key can be claimed")
+        H.eq(d.legacyClaims["Brynja-LogOnly"], me, "a log-only claim is recorded")
+      end)
+    end
+  end)
+
+  _G.BiSMemoriesDB, said = keepDB, keepSaid
+  _G.GetBuildInfo, _G.UnitName, _G.GetUnitName, _G.GetRealmName = keepBuild, keepName, keepFull, keepRealm
+  M.me, M.log, M.nobody, M.faceless = keepMe, keepLog, keepNobody, keepFaceless
+  M.claimTried, M.legacyNotified, M.gambaHooked, M.candidArmed = keepTried, keepNotified, keepGamba, keepCandid
+  if NS.Pins and NS.Pins.Update then
+    local pinsOK, pinsErr = pcall(NS.Pins.Update)
+    H.ok(pinsOK, "restore map pins for the original database", pinsErr)
+    M.me, M.log = keepMe, keepLog
+  end
+  H.ok(ok, "Forever regression suite restores state after unexpected errors", err)
+end)()
+
 H.report()
