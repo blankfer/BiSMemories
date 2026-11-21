@@ -83,15 +83,171 @@ local realZone  -- below too
 -- anywhere the main had been. Now every note carries the character, and what a character has seen,
 -- killed and done first is kept under their own name (d.chars[key]).
 
---- This character's key, "Name-Realm", or nil while the client still calls them "Unknown". Kept once
---- known: a name does not change mid-session.
+--- This character's key, or nil while the client still calls them "Unknown". Kept once known: a name does
+--- not change mid-session. A client that names the realm: "Name-Realm", as always.
+---
+--- FOREVER NAMES NO REALM ANY MORE (1.60.1 Live Update 2, 21 Nov 2026: realm names and ids come back "" and 0,
+--- for good). The realm fell back to "?" and every character woke up a stranger in their own album: an empty
+--- book (first death and first mount again, places they live in "new", boss bests gone) and their own notes
+--- filed under somebody else. So with no realm the key is the one this character ALREADY HAS (M.KeyFor): the
+--- saves hold exactly one "Name-<realm>" = that one, kept for good - nothing is renamed, not one note
+--- rewritten, and every API reader sees the same names it always did. Then the stray book the bug wrote
+--- ("Name-?") is folded in once (M.FoldStray).
 function M.Me()
   if M.me then return M.me end
   local name = plain(UnitName and UnitName("player"))
   local realm = plain(GetRealmName and GetRealmName())
   if type(name) ~= "string" or name == "" or name == (UNKNOWNOBJECT or "Unknown") then return nil end
-  M.me = name .. "-" .. (type(realm) == "string" and realm ~= "" and realm or "?")
+  if type(realm) == "string" and realm ~= "" then
+    M.me = name .. "-" .. realm
+    return M.me
+  end
+  M.whole = M.Whole(name)
+  M.me = M.KeyFor(name, M.whole)
+  M.FoldStray(M.me, name)
   return M.me
+end
+
+--- The whole name ("Chainheal Ryangosling", GetUnitName(unit, false) - Forever's UnitName is the first name
+--- only), or nil unless it is truly two words starting with the first name: a half-loaded answer is never
+--- written down, because a book's owner (M.KeyFor) is compared against it for good.
+function M.Whole(name)
+  if not GetUnitName then return nil end
+  local ok, whole = pcall(GetUnitName, "player", false)
+  whole = ok and plain(whole) or nil
+  if type(whole) ~= "string" or whole:sub(1, #name + 1) ~= name .. " " or not whole:find("%S", #name + 2) then
+    return nil
+  end
+  return whole
+end
+
+--- Which key is this character's, with no realm to say. Every "Name-<realm>" the saves know - a book or a note;
+--- the bug's "Name-?" and a new "Name-" do not count - is a candidate. A book that knows its owner's whole name
+--- (`owner`, written once below) is only ever this character's if the whole names match: a new alt who shares a
+--- first name never takes the main's book. One candidate = it. A book owned by this whole name = it, however many
+--- others. None = a new character: "Name-". Two or more = no guess: "Name-" too (the old books stay as they are).
+function M.KeyFor(name, whole)
+  local d = db()
+  local chars = type(d.chars) == "table" and d.chars or {}
+  local pre = name .. "-"
+  local seen, found = {}, {}
+  local function look(key)
+    if type(key) ~= "string" or seen[key] or key:sub(1, #pre) ~= pre then return end
+    seen[key] = true
+    local realm = key:sub(#pre + 1)
+    if realm == "" or realm == "?" then return end
+    local owner = M.Owner(chars[key])
+    if owner and whole then
+      if owner ~= whole then return end                -- another character's, who shares this first name
+      found.owned = key
+    end                                                -- (whole name not known this time: cannot rule it out)
+    found[#found + 1] = key
+  end
+  for key in pairs(chars) do look(key) end
+  for _, e in ipairs(type(d.log) == "table" and d.log or {}) do
+    if type(e) == "table" then look(e.char) end
+  end
+  local key = found.owned or (#found == 1 and found[1]) or pre
+  if whole and type(chars[key]) == "table" and chars[key].owner == nil then chars[key].owner = whole end
+  return key
+end
+
+--- A book's owner (the whole name), or nil when it never knew one.
+function M.Owner(book)
+  local owner = type(book) == "table" and book.owner or nil
+  return type(owner) == "string" and owner ~= "" and owner or nil
+end
+
+local function deep(v)
+  if type(v) ~= "table" then return v end
+  local out = {}
+  for k, x in pairs(v) do out[k] = deep(x) end
+  return out
+end
+
+--- A first-time stamp from two books: the earliest (a number beats nothing; anything else keeps the one there).
+local function earliest(a, b)
+  if type(a) == "number" and type(b) == "number" then return math.min(a, b) end
+  if a == nil then return b end
+  return a
+end
+
+--- One book folded into another, in place. Places and firsts = both (a first keeps the EARLIEST time); a boss's
+--- kills add up, its best = the fastest, its first kill = the earliest; the gamba = the biggest win. Anything
+--- else the stray book has and this one does not comes along.
+function M.MergeBook(into, from)
+  for _, part in ipairs({ "zones", "firsts", "bosses" }) do
+    into[part] = type(into[part]) == "table" and into[part] or {}
+  end
+  if type(from) ~= "table" then return into end
+  for z, v in pairs(type(from.zones) == "table" and from.zones or {}) do into.zones[z] = earliest(into.zones[z], v) end
+  for k, v in pairs(type(from.firsts) == "table" and from.firsts or {}) do into.firsts[k] = earliest(into.firsts[k], v) end
+  for name, b in pairs(type(from.bosses) == "table" and from.bosses or {}) do
+    local a = into.bosses[name]
+    if type(a) ~= "table" then
+      into.bosses[name] = deep(b)
+    elseif type(b) == "table" then
+      a.kills = (tonumber(a.kills) or 0) + (tonumber(b.kills) or 0)
+      local ab, bb = tonumber(a.best), tonumber(b.best)
+      a.best = (ab and bb) and math.min(ab, bb) or ab or bb
+      a.first = earliest(a.first, b.first)
+      local aa, ba = tonumber(a.at), tonumber(b.at)
+      a.at = (aa and ba) and math.max(aa, ba) or aa or ba     -- the session clock of the latest kill (M.TWICE)
+      for k, v in pairs(b) do if a[k] == nil then a[k] = deep(v) end end
+    end
+  end
+  local ag, bg = tonumber(into.gambaBest), tonumber(from.gambaBest)
+  if bg and (not ag or bg > ag) then into.gambaBest = bg end
+  for k, v in pairs(from) do
+    if into[k] == nil and k ~= "owner" then into[k] = deep(v) end
+  end
+  return into
+end
+
+--- THE STRAY BOOKS FOLD HOME (once, and again only if one comes back). What the realm bug wrote under "Name-?" -
+--- and a "Name-" from before this character's key was found - is merged into `key`, and the notes taken under it
+--- are this character's again. Nothing is thrown away: each stray book, as it was, and `key`'s book as it was
+--- before, are kept in d.keptBeforeRealmFix. A save with no stray book costs one look at the log. -> notes moved
+M.STRAY = { "?", "" }
+function M.FoldStray(key, name)
+  local d = db()
+  local moved = 0
+  for _, realm in ipairs(M.STRAY) do
+    local stray = name .. "-" .. realm
+    local chars = type(d.chars) == "table" and d.chars or nil
+    local book = chars and chars[stray]
+    local owner = M.Owner(book)
+    -- a stray book that knows a whole name is folded only into that character (and never while ours is unknown)
+    if stray ~= key and (not owner or owner == M.whole) then
+      local notes = {}
+      for _, e in ipairs(type(d.log) == "table" and d.log or {}) do
+        if type(e) == "table" and e.char == stray then
+          e.char = key
+          notes[#notes + 1] = tonumber(e.at) or 0
+        end
+      end
+      if type(book) == "table" or #notes > 0 then
+        local kept = { stray = stray, into = key, at = (time and time()) or 0, notes = notes }
+        if type(book) == "table" then
+          local into = chars[key]
+          kept.book, kept.before = book, deep(into)
+          if type(into) ~= "table" then
+            into = { zones = {}, bosses = {}, firsts = {} }
+            M.MergeBook(into, book)
+            chars[key] = into
+          else
+            M.MergeBook(into, book)
+          end
+          chars[stray] = nil                           -- kept whole in d.keptBeforeRealmFix, just below
+        end
+        d.keptBeforeRealmFix = type(d.keptBeforeRealmFix) == "table" and d.keptBeforeRealmFix or {}
+        table.insert(d.keptBeforeRealmFix, kept)
+        moved = moved + #notes
+      end
+    end
+  end
+  if moved > 0 then M.faceless = nil end
+  return moved
 end
 
 --- This character's own book: { zones = {}, bosses = { [name] = { kills, best } }, firsts = {}, gambaBest }.
@@ -106,7 +262,7 @@ function M.Char()
   d.chars = type(d.chars) == "table" and d.chars or {}
   local c = d.chars[key]
   if type(c) ~= "table" then
-    c = { zones = {}, bosses = {}, firsts = {} }
+    c = { zones = {}, bosses = {}, firsts = {}, owner = M.whole }   -- the whole name, when Forever gave one
     d.chars[key] = c
     M.Inherit(c)
   end

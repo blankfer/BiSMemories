@@ -2,6 +2,10 @@
 --   lua5.1 dev/tests.lua        or, from the AddOns folder: _bisdev/check.sh BiSMemories
 local HERE = (arg and arg[0] or ""):match("^(.*)[/\\]") or "."
 local H = dofile(HERE .. "/kit.lua")   -- Nebbinator's strict harness (dev/harness.lua), verbatim
+-- FOREVER HAS NO REALM (1.60.1 Live Update 2, 21 Nov 2026: "APIs that return realm names or IDs now instead return an
+-- empty string or zero"). The kit (verbatim) still answers "Dreamscythe"; the client this addon serves does not.
+_G.GetRealmName = function() return "" end
+_G.GetRealmID = function() return 0 end
 local ROOT = os.getenv("BISMEMORIES") or (HERE .. "/..")
 local FILES = H.TOC(ROOT, "BiSMemories.toc")
 
@@ -1359,8 +1363,9 @@ end
   H.section("0.9.0: whose memory - every note says who, where on the map, in what")
   wipe()
   local e = M.Shoot("manual", "a test")
-  H.eq(M.Me(), "Kumlust-Dreamscythe", "this character, by name and realm")
-  H.ok(e.char == "Kumlust-Dreamscythe" and e.class == "SHAMAN" and e.race == "Tauren", "the note says who took it",
+  -- Forever names no realm (21 Nov 2026): a character with no old key of their own is "Name-"
+  H.eq(M.Me(), "Kumlust-", "this character, by name (no realm on Forever, no old key)")
+  H.ok(e.char == "Kumlust-" and e.class == "SHAMAN" and e.race == "Tauren", "the note says who took it",
        tostring(e.char))
   H.ok(e.map == 1413 and e.x == 0.5123 and e.y == 0.3, "and where on the map", tostring(e.x))
   H.ok(type(e.gear) == "table" and e.gear[16] == 17182, "and what you wore (the item ids)")
@@ -1377,7 +1382,7 @@ end
   M.zoneShots = 0
   H.ok(M.NewZone("Mulgore") == nil and M.NewZone("The Barrens") == "The Barrens",
        "an alt's first time in the Barrens is hers, whoever went there before")
-  H.ok(d.chars["Kumlust-Dreamscythe"] and d.chars["Altie-Dreamscythe"], "each under their own name")
+  H.ok(d.chars["Kumlust-"] and d.chars["Altie-"], "each under their own name")
 
   -- THE OLD SHARED LIST goes to the character who most likely made it - not to every alt
   d.chars, d.zones = nil, { ["Orgrimmar"] = true }
@@ -4002,6 +4007,151 @@ end)()
   H.ok(not out:find("addon action", 1, true), "and they are not on the 'not heard at all' list")
   d.blocked = nil
   _G.C_GamePad = keepPad
+end)()
+
+--------------------------------------------------------------------
+-- FOREVER NAMES NO REALM (1.60.1 Live Update 2, 21 Nov 2026). The key was "Name-Realm"; with the realm gone it
+-- became "Name-?" and every character logged in a stranger: an empty book, first death again, own notes not theirs.
+--------------------------------------------------------------------
+;(function()
+  local M, J = NS.M, NS.J
+  local keep = { _G.BiSMemoriesDB, _G.BiSMemoriesCharDB, _G.UnitName, _G.GetUnitName, _G.UnitLevel, _G.GetRealmName,
+                 _G.C_DeathRecap, _G.C_Timer, J.everyone, M.fighting, _G.GetTime }
+  local REALM2, REALM6 = "Chainheal-CAMWOW US1 Realm 2 PvP", "Pakune-CAMWOW US1 Realm 6 PvP"
+  local first, whole = "Chainheal", "Chainheal Ryangosling"
+  _G.UnitName = function(u) if u == "player" then return first end return "Someone" end
+  _G.GetUnitName = function(u, server) if u == "player" and server == false then return whole end end
+  _G.UnitLevel = function() return 60 end
+  _G.C_DeathRecap = nil
+  _G.C_Timer = { After = function() end }
+  J.everyone, M.fighting = false, nil
+  local clock = 1e12
+  _G.GetTime = function() clock = clock + 100 return clock end   -- later than any shot before: never "too soon"
+  -- a fresh client: nothing this addon worked out last session is still in memory
+  local function login(acct)
+    _G.BiSMemoriesDB, _G.BiSMemoriesCharDB = acct, nil
+    M.me, M.whole, M.nobody, M.faceless, M.claimTried = nil, nil, nil, nil, nil
+    fire("ADDON_LOADED", "BiSMemories")
+    fire("PLAYER_LOGIN")
+    fire("PLAYER_ENTERING_WORLD")
+    return _G.BiSMemoriesDB
+  end
+  -- Arn's save on 21 Nov, in small: a month under the realm key, an hour under the bug's "-?"
+  local function oldSave()
+    return {
+      comm = true, forever10 = true, candid = false, onThisDay = false, zone = true, death = true, gap = 0, delay = 0,
+      chars = {
+        [REALM2] = { zones = { Orgrimmar = true, Mulgore = true }, firsts = { death = 1000, mount = 2000 },
+                     bosses = { Ragnaros = { kills = 3, best = 300, first = 5000, at = 10 },
+                                Onyxia = { kills = 1, best = 200, first = 6000 } }, gambaBest = 500 },
+        ["Chainheal-?"] = { zones = { Orgrimmar = true, Tanaris = true }, firsts = { mount = 9050, riding = 9100 },
+                            bosses = { Ragnaros = { kills = 1, best = 250, first = 9500, at = 20 },
+                                       Hogger = { kills = 1, best = 30, first = 9600 } }, gambaBest = 200 },
+        ["Ryan-CAMWOW US1 Realm 2 PvP"] = { zones = { Durotar = true }, firsts = {}, bosses = {} },
+        [REALM6] = { zones = { Darnassus = true }, firsts = {}, bosses = {} },
+      },
+      log = {
+        { char = "Chainheal-?", at = 9600, reason = "boss", detail = "first kill: Hogger" },
+        { char = "Ryan-CAMWOW US1 Realm 2 PvP", at = 8000, reason = "levelup", detail = "level 20", level = 20 },
+        { char = "Chainheal-?", at = 9100, reason = "first", detail = "riding" },
+        { char = REALM2, at = 5000, reason = "boss", detail = "first kill: Ragnaros" },
+        { char = REALM6, at = 4000, reason = "levelup", detail = "level 10", level = 10 },
+      },
+    }
+  end
+
+  H.section("21 Nov: Forever names no realm - an old save + the bug's stray book, then a login, no clicks")
+  local d = login(oldSave())
+  H.eq(M.Me(), REALM2, "the character keeps the one key they already had (no rename, no '-?')")
+  local c = d.chars[REALM2]
+  H.eq(d.chars["Chainheal-?"], nil, "the stray book is folded away")
+  H.ok(c.zones.Orgrimmar and c.zones.Mulgore and c.zones.Tanaris, "places: both books' (union)")
+  H.eq(c.firsts.death, 1000, "first death: the old one stands")
+  H.eq(c.firsts.mount, 2000, "first mount: the EARLIEST time kept")
+  H.eq(c.firsts.riding, 9100, "a first only the stray book had comes along")
+  H.eq(c.bosses.Ragnaros.kills, 4, "boss kills add up")
+  H.eq(c.bosses.Ragnaros.best, 250, "best time: the fastest")
+  H.eq(c.bosses.Ragnaros.first, 5000, "first kill: the earliest")
+  H.ok(c.bosses.Hogger and c.bosses.Hogger.kills == 1 and c.bosses.Onyxia.kills == 1, "a boss in one book only: as it was")
+  H.eq(c.gambaBest, 500, "the gamba: the biggest win")
+  H.eq(c.owner, whole, "the book now knows its owner's whole name")
+  local kept = d.keptBeforeRealmFix and d.keptBeforeRealmFix[1]
+  H.ok(kept and kept.stray == "Chainheal-?" and kept.into == REALM2 and kept.book.firsts.riding == 9100
+       and kept.before.bosses.Ragnaros.kills == 3 and #kept.notes == 2,
+       "nothing thrown away: the stray book and the book before the merge kept aside")
+  local mine, ryan = 0, 0
+  for _, e in ipairs(J.Entries()) do
+    if e.char == REALM2 then mine = mine + 1 end
+    if e.char:find("^Ryan") then ryan = ryan + 1 end
+  end
+  H.eq(mine, 3, "the journal shows this character's notes - the old ones and the stray ones - as theirs")
+  H.eq(ryan, 0, "and not Ryan's")
+  H.eq(d.log[2].char, "Ryan-CAMWOW US1 Realm 2 PvP", "another character's note is left alone")
+  H.ok(d.chars["Ryan-CAMWOW US1 Realm 2 PvP"] and d.chars[REALM6], "and their books too")
+  H.eq(select(2, M.NewZone("Orgrimmar")), "been here", "a place from the old book is no new place")
+  H.eq(select(2, M.NewZone("Tanaris")), "been here", "nor one from the stray book")
+  local n0 = #M.Log()
+  local e, why = M.Death()
+  H.ok(e == nil and #M.Log() == n0, "dying now is no 'first death'", e and e.detail or why)
+
+  H.section("21 Nov: the fold happens once")
+  d = login(d)
+  c = d.chars[REALM2]
+  H.eq(M.Me(), REALM2, "the next login: the same key")
+  H.eq(#d.keptBeforeRealmFix, 1, "nothing folded twice")
+  H.eq(c.bosses.Ragnaros.kills, 4, "and no kill counted twice")
+  -- an old build on another PC writes a "-?" again: it comes home too, and is kept aside
+  d.chars["Chainheal-?"] = { zones = { Feralas = true }, firsts = {}, bosses = { Ragnaros = { kills = 1, best = 400 } } }
+  d = login(d)
+  c = d.chars[REALM2]
+  H.ok(c.zones.Feralas and c.bosses.Ragnaros.kills == 5 and c.bosses.Ragnaros.best == 250 and #d.keptBeforeRealmFix == 2,
+       "a stray book written later folds in the same way")
+
+  H.section("21 Nov: no old key to keep")
+  d = login(nil)
+  H.eq(M.Me(), "Chainheal-", "a new install: 'Name-' (no realm, no '?')")
+  M.Char()
+  H.eq(d.chars["Chainheal-"].owner, whole, "its book knows its owner")
+  H.eq(d.keptBeforeRealmFix, nil, "nothing to fold, nothing kept")
+  d.death, d.gap, d.delay = true, 0, 0
+  e, why = M.Death()
+  H.ok(e and e.detail:find("first death", 1, true), "a truly first death is still one (the test above can fail)",
+       e and e.detail or why)
+  d = login(d)
+  H.eq(M.Me(), "Chainheal-", "and the same key at the next login")
+  -- a new character who logged in only under the bug: their "-?" becomes "Name-"
+  d = login({ forever10 = true, chars = { ["Chainheal-?"] = { zones = { Tanaris = true }, firsts = { death = 7 }, bosses = {} } },
+              log = { { char = "Chainheal-?", at = 7, reason = "death", detail = "your first death" } } })
+  H.eq(M.Me(), "Chainheal-", "a character who only ever had the stray key")
+  H.ok(d.chars["Chainheal-"] and d.chars["Chainheal-"].firsts.death == 7 and d.log[1].char == "Chainheal-",
+       "keeps that book and those notes", d.log[1].char)
+
+  H.section("21 Nov: never a guess")
+  d = login({ forever10 = true, chars = { ["Chainheal-Realm A"] = { zones = { A = true }, firsts = {}, bosses = {} },
+                                          ["Chainheal-Realm B"] = { zones = { B = true }, firsts = {}, bosses = {} } } })
+  H.eq(M.Me(), "Chainheal-", "two realms under one first name: no guess")
+  H.ok(d.chars["Chainheal-Realm A"].owner == nil and d.chars["Chainheal-Realm B"].owner == nil, "neither book claimed")
+  d = login({ forever10 = true, chars = { [REALM2] = { zones = {}, firsts = {}, bosses = {}, owner = "Chainheal Otherguy" },
+                                          ["Chainheal-?"] = { zones = {}, firsts = {}, bosses = {}, owner = "Chainheal Otherguy" } } })
+  H.eq(M.Me(), "Chainheal-", "another whole name's book is never taken by the same first name")
+  H.ok(d.chars["Chainheal-?"] ~= nil, "nor their stray book folded")
+  d = login({ forever10 = true, chars = { ["Chainheal-Realm A"] = { zones = {}, firsts = {}, bosses = {}, owner = whole },
+                                          ["Chainheal-Realm B"] = { zones = {}, firsts = {}, bosses = {} } } })
+  H.eq(M.Me(), "Chainheal-Realm A", "a book with this whole name on it wins over a second realm")
+  _G.GetUnitName = function() return first end        -- the whole name not loaded yet
+  d = login({ forever10 = true, chars = { [REALM2] = { zones = {}, firsts = {}, bosses = {}, owner = whole } } })
+  H.eq(M.Me(), REALM2, "whole name not known this time: the one owned book is still this character's")
+  H.eq(M.whole, nil, "and a half name is never written down as a whole one")
+
+  H.section("21 Nov: a client that still names the realm")
+  _G.GetRealmName = function() return "Dreamscythe" end
+  d = login(oldSave())
+  H.eq(M.Me(), "Chainheal-Dreamscythe", "Name-Realm, as always")
+  H.ok(d.chars["Chainheal-?"] ~= nil and d.keptBeforeRealmFix == nil, "and nothing folded there")
+
+  _G.BiSMemoriesDB, _G.BiSMemoriesCharDB, _G.UnitName, _G.GetUnitName, _G.UnitLevel, _G.GetRealmName,
+    _G.C_DeathRecap, _G.C_Timer, J.everyone, M.fighting, _G.GetTime = unpack(keep, 1, 11)
+  M.me, M.whole, M.nobody, M.faceless = nil, nil, nil, nil
 end)()
 
 H.report()
