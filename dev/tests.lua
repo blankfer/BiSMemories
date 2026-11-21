@@ -231,6 +231,165 @@ runTimers()
 H.eq(kits, 0, "the click can be switched off")
 _G.BiSMemoriesDB.sound = true
 
+;(function()
+  local d = NS.DB()
+  local keepGetBool, keepGet, keepSet, keepConsole = _G.GetCVarBool, _G.GetCVar, _G.SetCVar, _G.ConsoleExec
+  local keepTimer, keepShot = _G.C_Timer, _G.Screenshot
+  local keepClean, keepDelay, keepGap = d.clean, d.delay, d.gap
+  local log = M.Log()
+  local keepLog = {}
+  for i, entry in ipairs(log) do keepLog[i] = entry end
+  local hdr, setCalls, shotHDR = true, 0, {}
+  local q = {}
+  _G.GetCVarBool = function(name) if name == "HDROutput" then return hdr end return false end
+  _G.GetCVar = function(name) if name == "HDROutput" then return hdr and "1" or "0" end end
+  _G.SetCVar = function(name, value)
+    setCalls = setCalls + 1
+    if name ~= "HDROutput" then error("unexpected CVar") end
+    hdr = value == "1"
+  end
+  _G.ConsoleExec = nil
+  _G.C_Timer = { After = function(delay, fn) q[#q + 1] = { delay = delay, fn = fn } end }
+  _G.Screenshot = function() shots = shots + 1; shotHDR[#shotHDR + 1] = hdr end
+  d.clean, d.delay, d.gap = false, 0, 0
+  local function take(detail) return M.Shoot("manual", detail) end
+  local function runDelay(delay)
+    local old = q
+    q = {}
+    for _, timer in ipairs(old) do
+      if timer.delay == delay then timer.fn() else q[#q + 1] = timer end
+    end
+  end
+
+  take("HDR success")
+  H.eq(shotHDR[#shotHDR], false, "HDR is disabled before a regular screenshot")
+  H.eq(hdr, false, "HDR stays disabled until screenshot completion")
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  H.eq(hdr, true, "screenshot success restores HDR")
+
+  local keepUIAlpha = UIParent:GetAlpha()
+  d.clean = true
+  hdr = true
+  local beforeShots = #shotHDR
+  take("HDR settles before capture")
+  H.eq(hdr, true, "HDR stays on while the interface is settling")
+  H.eq(UIParent:GetAlpha(), 0, "the interface hides before the settling delay")
+  local staleCleanTimeout
+  for _, timer in ipairs(q) do
+    if timer.delay == M.CLEAN_BACK then staleCleanTimeout = timer.fn end
+  end
+  runDelay(M.CLEAN_SETTLE)
+  H.eq(#shotHDR, beforeShots + 1, "the clean screenshot follows the settling delay")
+  H.eq(shotHDR[#shotHDR], false, "HDR is disabled at the clean screenshot shutter")
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  H.eq(hdr, true, "HDR is restored after the clean screenshot")
+  H.eq(UIParent:GetAlpha(), keepUIAlpha, "the interface returns to its original alpha")
+
+  hdr = true
+  take("new clean session")
+  if staleCleanTimeout then staleCleanTimeout() end
+  H.eq(UIParent:GetAlpha(), 0, "an old cleanup timer cannot reveal the UI during a newer capture")
+  runDelay(M.CLEAN_SETTLE)
+  M.OnEvent("SCREENSHOT_FAILED")
+  H.eq(hdr, true, "a failed clean screenshot restores HDR")
+  H.eq(UIParent:GetAlpha(), keepUIAlpha, "a failed clean screenshot restores the interface")
+  d.clean = false
+
+  hdr = false
+  local beforeSet = setCalls
+  take("HDR already off")
+  H.eq(shotHDR[#shotHDR], false, "an HDR-off screenshot is captured unchanged")
+  H.eq(setCalls, beforeSet, "HDR already off is not changed")
+  M.OnEvent("SCREENSHOT_FAILED")
+
+  _G.GetCVarBool = function() error("GetCVarBool unavailable") end
+  _G.SetCVar = nil
+  _G.ConsoleExec = function(command)
+    if command == "HDROutput 0" then hdr = false elseif command == "HDROutput 1" then hdr = true end
+  end
+  hdr = true
+  take("HDR console fallback")
+  H.eq(shotHDR[#shotHDR], false, "GetCVar and ConsoleExec provide safe fallbacks")
+  M.OnEvent("SCREENSHOT_FAILED")
+  H.eq(hdr, true, "the fallback setter also restores HDR")
+
+  _G.SetCVar = function() error("SetCVar refused") end
+  _G.ConsoleExec = function() error("ConsoleExec refused") end
+  hdr = true
+  local beforeShots = #shotHDR
+  take("HDR setter failure")
+  H.eq(#shotHDR, beforeShots + 1, "a failed HDR setter does not interrupt screenshot capture")
+  H.eq(shotHDR[#shotHDR], true, "HDR stays on when neither setter succeeds")
+  M.OnEvent("SCREENSHOT_FAILED")
+
+  _G.GetCVarBool = function(name) return name == "HDROutput" and hdr end
+  _G.SetCVar = function(name, value) if name == "HDROutput" then hdr = value == "1" end end
+  _G.ConsoleExec = nil
+  d.delay = 0.5
+  hdr = true
+  beforeShots = #shotHDR
+  take("delayed HDR capture")
+  H.eq(#shotHDR, beforeShots, "HDR remains on until a delayed capture reaches the shutter")
+  runDelay(0.5)
+  H.eq(shotHDR[#shotHDR], false, "the delayed capture disables HDR at its shutter")
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  H.eq(hdr, true, "the delayed capture restores HDR on completion")
+  runDelay(1)
+
+  d.delay = 0.25
+  hdr = true
+  take("overlapping HDR capture one")
+  take("overlapping HDR capture two")
+  runDelay(0.25)
+  H.eq(hdr, false, "HDR remains off for overlapping addon captures")
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  H.eq(hdr, false, "one completion does not restore HDR during another capture")
+  M.OnEvent("SCREENSHOT_FAILED")
+  H.eq(hdr, true, "the last overlapping completion restores HDR")
+  runDelay(1)
+
+  d.delay = 0
+  hdr = true
+  take("HDR timeout fallback")
+  H.eq(hdr, false, "HDR is off while the screenshot is pending")
+  runDelay(1)
+  H.eq(hdr, true, "the one-second fallback restores HDR without a completion event")
+
+  take("stale HDR timeout")
+  local staleTimeout = q[1] and q[1].fn
+  q = {}
+  M.OnEvent("SCREENSHOT_SUCCEEDED")
+  take("new HDR session")
+  if staleTimeout then staleTimeout() end
+  H.eq(hdr, false, "an old timeout cannot restore HDR during a newer capture")
+  M.OnEvent("SCREENSHOT_FAILED")
+  H.eq(hdr, true, "the newer capture completion restores HDR")
+  runDelay(1)
+
+  _G.C_Timer = nil
+  hdr = true
+  take("HDR without timer")
+  H.eq(shotHDR[#shotHDR], false, "HDR is disabled for a capture without a timer")
+  H.eq(hdr, true, "missing timers do not leave HDR disabled")
+
+  _G.C_Timer = { After = function() error("timer refused") end }
+  hdr = true
+  take("HDR with failed timer")
+  H.eq(hdr, true, "a failed fallback timer restores HDR")
+
+  _G.C_Timer = nil
+  _G.Screenshot = function() error("screenshot refused") end
+  hdr = true
+  take("failed HDR screenshot")
+  H.eq(hdr, true, "a failed screenshot restores HDR")
+
+  d.clean, d.delay, d.gap = keepClean, keepDelay, keepGap
+  for i = #log, 1, -1 do log[i] = nil end
+  for i, entry in ipairs(keepLog) do log[i] = entry end
+  _G.GetCVarBool, _G.GetCVar, _G.SetCVar, _G.ConsoleExec = keepGetBool, keepGet, keepSet, keepConsole
+  _G.C_Timer, _G.Screenshot = keepTimer, keepShot
+end)()
+
 -- A loot burst is one memory, not forty pictures.
 local blocked, why = M.Shoot("levelup", "again")
 H.ok(blocked == nil and why == "too soon", "a second shot inside the gap is refused", tostring(why))
@@ -1503,21 +1662,31 @@ end
   -- addon's shot is never a key press, so the client refuses it: nothing hides, no Lua error (pcall says fine),
   -- an ADDON_ACTION_BLOCKED instead. This mock does exactly that, and the test asks what the picture SHOWS.
   local blocked = 0
+  local keepCombat = _G.InCombatLockdown
+  local keepHide, keepShow = UIParent.Hide, UIParent.Show
+  _G.InCombatLockdown = function() return false end
   _G.SetUIVisibility = function() blocked = blocked + 1 end
   local ui = _G.UIParent
   run()                                                -- earlier shots' "back in a moment" timers, run out
   M.Clean(false)
   ui:SetAlpha(1)                                       -- the client's UIParent starts fully shown
-  local function shown() return (ui:GetAlpha() or 1) > 0 end
+  local function shown() return ui:IsShown() end
   d.clean, d.delay = true, 0.6
+  local beforeCleanShot = shots
   M.Shoot("manual", "clean")
   H.ok(shown(), "nothing hidden before the shutter")
   q[1]()
   table.remove(q, 1)
-  H.ok(not shown() and M.uiHidden, "the shutter: the interface is really out of the picture")
+  H.ok(not shown() and M.uiHidden, "the interface hides before the shutter")
+  H.eq(shots, beforeCleanShot, "the hidden interface has time to settle before the screenshot")
+  M.OnEvent("SCREENSHOT_FAILED")
+  H.ok(not shown(), "an earlier screenshot event does not reveal the UI during the settling pause")
+  run()
+  H.eq(shots, beforeCleanShot + 1, "the screenshot follows the settling pause")
   M.OnEvent("SCREENSHOT_SUCCEEDED")
   H.ok(shown() and ui:GetAlpha() == 1 and not M.uiHidden, "the picture written: back, as it was")
   M.Shoot("manual", "the event never comes")
+  run()
   run()
   run()
   H.ok(shown() and not M.uiHidden, "and if the client never says, back after a moment anyway")
@@ -1525,9 +1694,107 @@ end
   ui:SetAlpha(0.8)                                     -- someone dimmed their interface: it comes back dimmed
   M.Shoot("manual", "dimmed")
   run()
+  run()
   M.OnEvent("SCREENSHOT_SUCCEEDED")
   H.eq(ui:GetAlpha(), 0.8, "back to the player's own alpha, not to 1")
   ui:SetAlpha(1)
+
+  _G.InCombatLockdown = function() return true end
+  M.Clean(true)
+  H.ok(shown() and ui:GetAlpha() == 0, "combat: the UI stays shown and alpha is the fallback")
+  M.Clean(false)
+  H.ok(shown() and ui:GetAlpha() == 1, "combat fallback restores the player's UI")
+
+  _G.InCombatLockdown = function() return false end
+  local hide = ui.Hide
+  ui.Hide = function() end
+  M.Clean(true)
+  H.ok(shown() and ui:GetAlpha() == 0, "a blocked Hide is detected and alpha remains the fallback")
+  M.Clean(false)
+  H.ok(shown() and ui:GetAlpha() == 1, "a blocked Hide does not prevent UI cleanup")
+  ui.Hide = hide
+
+  M.Clean(true)
+  H.ok(not shown(), "outside combat, UIParent hides when Hide succeeds")
+  _G.InCombatLockdown = function() return true end
+  M.Clean(false)
+  H.ok(not shown() and ui:GetAlpha() == 1, "combat during a capture defers Show but restores alpha")
+  _G.InCombatLockdown = function() return false end
+  fire("PLAYER_REGEN_ENABLED")
+  H.ok(shown(), "PLAYER_REGEN_ENABLED restores UIParent after deferred cleanup")
+
+  ui:Hide()
+  M.Clean(true)
+  M.Clean(false)
+  H.ok(not shown(), "a UIParent that was already hidden stays hidden")
+  ui:Show()
+  ui:SetAlpha(1)
+
+  local keepEnumerateFrames = _G.EnumerateFrames
+  _G.EnumerateFrames = function(current)
+    if not current then return H.frames[1] end
+    for i, frame in ipairs(H.frames) do
+      if frame == current then return H.frames[i + 1] end
+    end
+  end
+  local layerOwner = _G.CreateFrame("Frame", nil, ui)
+  local ignoredFrame = _G.CreateFrame("Frame", nil, layerOwner)
+  ignoredFrame:SetAlpha(0.65)
+  ignoredFrame.IsIgnoringParentAlpha = function() return true end
+  local normalFrame = _G.CreateFrame("Frame", nil, layerOwner)
+  normalFrame:SetAlpha(0.55)
+  normalFrame.IsIgnoringParentAlpha = function() return false end
+  local ignoredRegion = layerOwner:CreateTexture()
+  ignoredRegion:SetAlpha(0.4)
+  ignoredRegion.IsIgnoringParentAlpha = function() return true end
+  local unrelatedFrame = _G.CreateFrame("Frame", nil)
+  unrelatedFrame:SetAlpha(0.75)
+  unrelatedFrame.IsIgnoringParentAlpha = function() return true end
+
+  local cleanCallbacks = 0
+  M.CleanShot(function()
+    cleanCallbacks = cleanCallbacks + 1
+    if cleanCallbacks == 1 then ignoredFrame:SetAlpha(0.35) end
+  end)
+  M.CleanShot(function() cleanCallbacks = cleanCallbacks + 1 end)
+  H.eq(ignoredFrame:GetAlpha(), 0, "an ignored-alpha frame hides as soon as the clean shot starts settling")
+  H.eq(ignoredRegion:GetAlpha(), 0, "an ignored-alpha region hides as soon as the clean shot starts settling")
+  H.eq(normalFrame:GetAlpha(), 0.55, "an inheriting frame is unchanged during settling")
+  local lateFrame = _G.CreateFrame("Frame", nil, layerOwner)
+  lateFrame:SetAlpha(0.45)
+  lateFrame.IsIgnoringParentAlpha = function() return true end
+  local lateRegion = lateFrame:CreateTexture()
+  lateRegion:SetAlpha(0.3)
+  lateRegion.IsIgnoringParentAlpha = function() return true end
+  run()
+  H.eq(cleanCallbacks, 2, "overlapping clean shots both reach their shutters")
+  H.eq(ignoredFrame:GetAlpha(), 0.35, "a repeated scan does not overwrite an addon opacity change")
+  H.eq(lateFrame:GetAlpha(), 0, "a descendant frame added during settling is hidden at the shutter")
+  H.eq(ignoredRegion:GetAlpha(), 0, "a descendant region that ignores parent alpha is hidden")
+  H.eq(lateRegion:GetAlpha(), 0, "a region added during settling is found at the shutter")
+  H.eq(normalFrame:GetAlpha(), 0.55, "a descendant inheriting alpha keeps its own opacity")
+  H.eq(unrelatedFrame:GetAlpha(), 0.75, "an unrelated frame is not changed")
+  M.Clean(false)
+  H.eq(ignoredFrame:GetAlpha(), 0.35, "restoration preserves an opacity changed while hidden")
+  H.eq(lateFrame:GetAlpha(), 0.45, "the late frame returns to its original opacity")
+  H.eq(ignoredRegion:GetAlpha(), 0.4, "the ignored region returns to its original opacity")
+  H.eq(lateRegion:GetAlpha(), 0.3, "the late region returns to its original opacity")
+  H.eq(ui:GetAlpha(), 1, "restoring layers also restores the interface alpha")
+  run()
+
+  _G.EnumerateFrames = nil
+  local frameWithoutEnumeration = _G.CreateFrame("Frame", nil, ui)
+  frameWithoutEnumeration:SetAlpha(0.8)
+  frameWithoutEnumeration.IsIgnoringParentAlpha = function() return true end
+  local noEnumerationShot = false
+  M.CleanShot(function() noEnumerationShot = true end)
+  run()
+  H.ok(noEnumerationShot, "a missing frame enumerator does not prevent the screenshot")
+  H.eq(frameWithoutEnumeration:GetAlpha(), 0.8, "without enumeration, descendant opacity is left untouched")
+  M.Clean(false)
+  run()
+  _G.EnumerateFrames = keepEnumerateFrames
+
   d.clean = false
   M.Shoot("manual", "not clean")
   q[1]()
@@ -1536,6 +1803,8 @@ end
   run()
   d.delay, d.clean = 0, true
   _G.SetUIVisibility = nil
+  ui.Hide, ui.Show = keepHide, keepShow
+  _G.InCombatLockdown = keepCombat
 
   H.section("0.9.0: on this day")
   wipe()
@@ -2853,6 +3122,7 @@ end)()
   H.ok(got and ui:GetAlpha() == 0 and M.uiHidden, "without it (or anything but exactly true): a clean shot still hides it")
   M.Clean(false)
   run()
+  run()
   H.eq(ui:GetAlpha(), 1, "and gives it back")
   local hdr = bytes(ROOT .. "/API.lua") or ""
   H.ok(hdr:find("TakeMemory(note, kind, from, extra)", 1, true) and hdr:find("since version 3", 1, true)
@@ -3424,6 +3694,7 @@ end)()
   local q = {}
   local keepTimer, keepShot, keepClass, keepRace = _G.C_Timer, _G.Screenshot, _G.UnitClass, _G.UnitRace
   local keepW, keepH, keepTime = UIParent._w, UIParent._h, _G.GetTime
+  local keepCombat = _G.InCombatLockdown
   _G.C_Timer = { After = function(t, fn) q[#q + 1] = { t = t, fn = fn } end }
   local function run() local t = q q = {} for _, x in ipairs(t) do x.fn() end return #t end
   local function settle(n) for _ = 1, n or 40 do if run() == 0 then return end end end
@@ -3442,7 +3713,7 @@ end)()
     return a > 0
   end
   _G.Screenshot = function()
-    snaps[#snaps + 1] = { ui = UIParent:GetAlpha(), card = S.back and seen(S.back) or false,
+    snaps[#snaps + 1] = { ui = UIParent:GetAlpha(), uiShown = UIParent:IsShown(), card = S.back and seen(S.back) or false,
                           them = S.post and S.post.them._anim, you = S.post and S.post.you:IsShown() }
   end
   _G.UnitClass = function() return "Shaman", "SHAMAN" end
@@ -3520,6 +3791,7 @@ end)()
   end
 
   H.section("8 Nov: the share card - the card, names shown")
+  _G.InCombatLockdown = function() return false end
   d.shareHidden = false
   local e, why = S.Take(boss)
   H.ok(e and e.reason == "share", "a share card is taken for the memory", tostring(why))
@@ -3582,7 +3854,8 @@ end)()
   untilShot()
   H.eq(#snaps, 1, "then ONE picture")
   local snap = snaps[1] or {}
-  H.ok(snap.card == true and snap.ui == 0, "at the shutter: the card on the screen, the interface faded out (M.Clean)")
+  H.ok(snap.card == true and snap.ui == 0 and snap.uiShown == false,
+       "at the shutter: the card stays visible while UIParent is hidden")
   H.eq(snap.them, NS.J.DEAD, "and the boss lying dead in the window")
   H.ok(log[1] == e and e.file and e.file:find("^WoWScrnShot_"), "the share card's note: first in the album, its file named")
   H.ok(e.of == T0 and e.detail == "Mutanus the Devourer" and e.hidden == false, "which memory, its title, names shown")
@@ -3593,18 +3866,27 @@ end)()
        "the ticket's rectangle as fractions of the screen", ("%s %s %s %s"):format(tostring(c.x), tostring(c.y), tostring(c.w), tostring(c.h)))
   M.OnEvent("SCREENSHOT_SUCCEEDED")
   H.ok(not back:IsShown(), "the picture written: the card is put away")
-  H.eq(UIParent:GetAlpha(), 1, "and the interface is back")
+  H.ok(UIParent:GetAlpha() == 1 and UIParent:IsShown(), "and the interface is back")
   H.eq(e.shot, true, "the note says the picture saved")
   settle()
   H.eq(#snaps, 1, "and only one: what was left waiting does nothing")
+  local beforeCancelledCard = #snaps
+  S.Take(boss)
+  run()
+  H.ok(UIParent:GetAlpha() == 0 and not UIParent:IsShown() and back:IsShown(),
+       "the share card stays visible while UIParent hides for settling")
+  S.Close()
+  settle()
+  H.eq(#snaps, beforeCancelledCard, "closing a share card during the settling pause cancels its screenshot")
+  H.ok(UIParent:GetAlpha() == 1 and UIParent:IsShown(), "cancelling a waiting share card restores the UI")
   -- the UI comes back to the PLAYER'S alpha, and comes back even when the client says nothing
   UIParent:SetAlpha(0.8)
   S.Take(boss)
   untilShot()
   H.eq(#snaps, 2, "a second card, a second picture")
-  H.ok(back:IsShown() and UIParent:GetAlpha() == 0, "up, the interface out")
+  H.ok(back:IsShown() and UIParent:GetAlpha() == 0 and not UIParent:IsShown(), "up, the card visible and UIParent hidden")
   settle()
-  H.ok(not back:IsShown() and math.abs(UIParent:GetAlpha() - 0.8) < 1e-9,
+  H.ok(not back:IsShown() and UIParent:IsShown() and math.abs(UIParent:GetAlpha() - 0.8) < 1e-9,
        "no word from the client: put away anyway, the interface back at the player's own alpha", UIParent:GetAlpha())
   UIParent:SetAlpha(1)
   -- a 16:10 screen: the card stays 16:9, the crop follows
@@ -3657,6 +3939,7 @@ end)()
   settle()
 
   H.section("8 Nov: the share card - never in a fight")
+  _G.InCombatLockdown = keepCombat
   _G.InCombatLockdown = function() return true end
   local said0, n0 = #said, #snaps
   local got, no = S.Take(boss)
@@ -3904,6 +4187,27 @@ end)()
   -- budget (8 Nov 2026): measured 4 - the time and the date for the note, the file stamp; once per card
   H.ok(nW <= 8, "the wait and the shutter ask at most 8 (measured " .. nW .. ")", Cost.Top(byW, 6))
   M.OnEvent("SCREENSHOT_SUCCEEDED")
+  do
+    local keepGetBool, keepGet, keepSet, keepConsole = _G.GetCVarBool, _G.GetCVar, _G.SetCVar, _G.ConsoleExec
+    local keepScreenshot = _G.Screenshot
+    local hdr, hdrAtShareShot = true, nil
+    _G.GetCVarBool = function(name) return name == "HDROutput" and hdr end
+    _G.SetCVar = function(name, value) if name == "HDROutput" then hdr = value == "1" end end
+    _G.ConsoleExec = nil
+    _G.Screenshot = function()
+      hdrAtShareShot = hdr
+      keepScreenshot()
+    end
+    S.Take(boss)
+    H.ok(untilShot(), "the share card reaches its screenshot")
+    H.eq(hdrAtShareShot, false, "share-card screenshots also disable HDR")
+    H.eq(hdr, false, "HDR stays off until the share-card screenshot completes")
+    M.OnEvent("SCREENSHOT_FAILED")
+    H.eq(hdr, true, "share-card failure restores HDR")
+    settle()
+    _G.GetCVarBool, _G.GetCVar, _G.SetCVar, _G.ConsoleExec = keepGetBool, keepGet, keepSet, keepConsole
+    _G.Screenshot = keepScreenshot
+  end
   local ticking = {}
   for _, fr in ipairs(H.frames) do
     local p, mine = fr, false
@@ -3951,6 +4255,7 @@ end)()
   J.sel = nil
   J.Hide()
   _G.C_Timer, _G.Screenshot, _G.UnitClass, _G.UnitRace, _G.GetTime = keepTimer, keepShot, keepClass, keepRace, keepTime
+  _G.InCombatLockdown = keepCombat
   UIParent._w, UIParent._h = keepW, keepH
 end)()
 

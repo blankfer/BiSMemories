@@ -369,29 +369,272 @@ function M.NpcOf(guid)
   return nil
 end
 
---- CLEAN SHOTS (Arn's yes, 21 Oct review): the interface out of the picture for the instant of the shot,
---- and back the moment the client says the picture is written - or after M.CLEAN_BACK seconds, whatever
---- happens. NOT SetUIVisibility, Alt+Z's own call: on the live client it is PROTECTED (Arn's BugGrabber,
---- the stress test, 21 Oct - "tried to call the protected function 'UNKNOWN()'"), and an addon's shot is
---- never a key press. The pcall around it said fine while the client refused it (solved.md). So the
---- interface is FADED instead - alpha is not a guarded property (action-bar faders change it in a fight) -
---- and comes back to the player's own alpha, not to 1.
+--- CLEAN SHOTS: hide UIParent when the client allows it outside combat, with alpha as the fallback.
+--- SetUIVisibility (Alt+Z's own call) was blocked on the live client; this is a separate Hide/Show attempt,
+--- verified by actual frame visibility. Restore at screenshot completion or after M.CLEAN_BACK seconds.
 M.CLEAN_BACK = 2
+M.CLEAN_SETTLE = 0.3
+local cleanGeneration = 0
+local cleanLayers = {}
+local cleanHiddenUI
+
+local function cleanOutOfCombat()
+  local inCombat = _G.InCombatLockdown
+  if type(inCombat) ~= "function" then return false end
+  local ok, active = pcall(inCombat)
+  return ok and active == false
+end
+
+local function hideCleanUI(ui)
+  if cleanHiddenUI or not cleanOutOfCombat() or type(ui.IsShown) ~= "function" or type(ui.Hide) ~= "function" then return end
+  local ok, shown = pcall(ui.IsShown, ui)
+  if not (ok and shown == true) then return end
+  pcall(ui.Hide, ui)
+  local shownOK, stillShown = pcall(ui.IsShown, ui)
+  if shownOK and stillShown == false then cleanHiddenUI = ui end
+end
+
+local function restoreCleanUI()
+  local ui = cleanHiddenUI
+  if not ui then return false end
+  local shownOK, shown = pcall(ui.IsShown, ui)
+  if shownOK and shown == true then
+    cleanHiddenUI = nil
+    M.cleanShowPending = nil
+    return true
+  end
+  M.cleanShowPending = true
+  if not cleanOutOfCombat() or type(ui.Show) ~= "function" then return false end
+  pcall(ui.Show, ui)
+  shownOK, shown = pcall(ui.IsShown, ui)
+  if shownOK and shown == true then
+    cleanHiddenUI = nil
+    M.cleanShowPending = nil
+    return true
+  end
+  return false
+end
+
+local function cleanLayer(object)
+  if cleanLayers[object] then return end
+  local ok, ignoresParentAlpha = pcall(function() return object:IsIgnoringParentAlpha() end)
+  if not (ok and ignoresParentAlpha) then return end
+  local alphaOK, alpha = pcall(function() return object:GetAlpha() end)
+  if not (alphaOK and type(alpha) == "number") then return end
+  local setOK = pcall(function() object:SetAlpha(0) end)
+  if setOK then cleanLayers[object] = { alpha = alpha, applied = 0 } end
+end
+
+local function cleanDescendant(frame)
+  local parent = frame
+  local seen = {}
+  while parent do
+    local ok, nextParent = pcall(function() return parent:GetParent() end)
+    if not ok then return false end
+    parent = nextParent
+    if parent == UIParent then return true end
+    if parent and seen[parent] then return false end
+    if parent then seen[parent] = true end
+  end
+  return false
+end
+
+local function fadeCleanLayers()
+  local enumerate = _G.EnumerateFrames
+  if type(enumerate) ~= "function" then return end
+  local frame
+  while true do
+    local nextOK, nextFrame = pcall(enumerate, frame)
+    if not nextOK or not nextFrame then return end
+    frame = nextFrame
+    if frame ~= UIParent and cleanDescendant(frame) then
+      cleanLayer(frame)
+      local regionsOK, regions = pcall(function() return { frame:GetRegions() } end)
+      if regionsOK then
+        for _, region in ipairs(regions) do cleanLayer(region) end
+      end
+    end
+  end
+end
+
+local function restoreCleanLayers()
+  local layers = cleanLayers
+  cleanLayers = {}
+  for object, saved in pairs(layers) do
+    local ok, alpha = pcall(function() return object:GetAlpha() end)
+    if ok and alpha == saved.applied then
+      pcall(function() object:SetAlpha(saved.alpha) end)
+    end
+  end
+end
+
 function M.Clean(on)
   local ui = UIParent
   if not (ui and ui.SetAlpha and ui.GetAlpha) then return false end
   if on then
-    if M.uiHidden then return true end
-    M.uiAlpha = ui:GetAlpha() or 1
-    ui:SetAlpha(0)
-    M.uiHidden = true
-    if C_Timer and C_Timer.After then C_Timer.After(M.CLEAN_BACK, function() M.Clean(false) end) end
+    if not M.uiHidden then
+      hideCleanUI(ui)
+      M.uiAlpha = ui:GetAlpha() or 1
+      ui:SetAlpha(0)
+      M.uiHidden = true
+      pcall(fadeCleanLayers)                 -- hide addon layers that ignore UIParent alpha during the settling pause
+    end
+    cleanGeneration = cleanGeneration + 1
+    local generation = cleanGeneration
+    local timer = _G.C_Timer
+    if type(timer) == "table" and type(timer.After) == "function" then
+      pcall(timer.After, M.CLEAN_BACK, function()
+        if generation == cleanGeneration then M.Clean(false) end
+      end)
+    end
     return true
   end
-  if not M.uiHidden then return false end
+  if not M.uiHidden then return restoreCleanUI() end
+  if (M.cleanWaiters or 0) > 0 then
+    M.cleanRestorePending = true
+    return false
+  end
+  cleanGeneration = cleanGeneration + 1
+  M.cleanRestorePending = nil
+  restoreCleanLayers()
   M.uiHidden = nil
   ui:SetAlpha(M.uiAlpha or 1)
   M.uiAlpha = nil
+  restoreCleanUI()
+  return true
+end
+
+--- Hide the interface, let its fade settle, then take a clean screenshot if the request is still current.
+function M.CleanShot(callback, valid)
+  if type(callback) ~= "function" then return false end
+  if not M.Clean(true) then
+    local current = true
+    if valid then
+      local ok, value = pcall(valid)
+      current = ok and value == true
+    end
+    if current then callback() end
+    return false
+  end
+
+  M.cleanWaiters = (M.cleanWaiters or 0) + 1
+  local waiting = true
+  local function finish()
+    if not waiting then return end
+    waiting = false
+    M.cleanWaiters = math.max((M.cleanWaiters or 1) - 1, 0)
+    local current = true
+    if valid then
+      local ok, value = pcall(valid)
+      current = ok and value == true
+    end
+    if not current then
+      if M.cleanWaiters == 0 then M.Clean(false) end
+      return false
+    end
+    M.cleanRestorePending = nil
+    M.Clean(true)                          -- restart the fallback from the shutter, not the settling wait
+    pcall(fadeCleanLayers)                 -- catch addon layers created or changed during the settling pause
+    callback()
+    return true
+  end
+
+  local timer = _G.C_Timer
+  if type(timer) == "table" and type(timer.After) == "function" then
+    local ok = pcall(timer.After, M.CLEAN_SETTLE, finish)
+    if ok then return true end
+  end
+  finish()
+  return true
+end
+
+local hdrSession
+local function hdrOn()
+  if type(_G.GetCVarBool) == "function" then
+    local ok, value = pcall(_G.GetCVarBool, "HDROutput")
+    if ok and (value == true or value == 1) then return true end
+  end
+  if type(_G.GetCVar) == "function" then
+    local ok, value = pcall(_G.GetCVar, "HDROutput")
+    if ok and (value == "1" or value == 1 or value == true) then return true end
+  end
+  return false
+end
+
+local function setHDR(enabled)
+  local value = enabled and "1" or "0"
+  if type(_G.SetCVar) == "function" then
+    local ok = pcall(_G.SetCVar, "HDROutput", value)
+    if ok then return true end
+  end
+  if type(_G.ConsoleExec) == "function" then
+    local ok = pcall(_G.ConsoleExec, "HDROutput " .. value)
+    if ok then return true end
+  end
+  return false
+end
+
+local function restoreHDR(session)
+  if session ~= hdrSession or session.pending > 0 then return false end
+  if not setHDR(true) then return false end
+  hdrSession = nil
+  return true
+end
+
+local function releaseHDR(session, capture)
+  if session ~= hdrSession or not capture.pending then return false end
+  capture.pending = false
+  session.pending = session.pending - 1
+  return restoreHDR(session)
+end
+
+--- The screenshot event has no capture id, so completions release addon captures in shutter order.
+function M.RestoreHDR()
+  local session = hdrSession
+  if not session then return false end
+  for _, capture in ipairs(session.captures) do
+    if capture.pending then return releaseHDR(session, capture) end
+  end
+  return restoreHDR(session)
+end
+
+--- Take a screenshot with HDR temporarily off when the client exposes a usable CVar setter.
+function M.Screenshot()
+  local session = hdrSession
+  if not session and hdrOn() and setHDR(false) then
+    session = { captures = {}, pending = 0 }
+    hdrSession = session
+  elseif session and hdrOn() then
+    setHDR(false)
+  end
+
+  local screenshot = _G.Screenshot
+  if type(screenshot) ~= "function" then
+    if session and session.pending == 0 then restoreHDR(session) end
+    return false
+  end
+
+  local capture
+  if session then
+    capture = { pending = true }
+    session.captures[#session.captures + 1] = capture
+    session.pending = session.pending + 1
+  end
+
+  local ok = pcall(screenshot)
+  if not ok then
+    if capture then releaseHDR(session, capture) end
+    return false
+  end
+  if not capture then return true end
+
+  local timer = _G.C_Timer
+  if type(timer) ~= "table" or type(timer.After) ~= "function" then
+    releaseHDR(session, capture)
+  else
+    local scheduled = pcall(timer.After, 1, function() releaseHDR(session, capture) end)
+    if not scheduled then releaseHDR(session, capture) end
+  end
   return true
 end
 
@@ -452,13 +695,15 @@ function M.Shoot(reason, detail, from, extra)
     if k ~= "keepUI" then entry[k] = v end
   end
 
-  local function capture()
+  local function shutter()
     entry.file = shotStem()
-    if d.clean and not keepUI then M.Clean(true) end
-    if Screenshot then pcall(Screenshot) end
+    M.Screenshot()
     click()
     -- other addons hear it here, at the shutter, so the file name is on the note they get (API.lua)
     if ns.Announce then pcall(ns.Announce, "BiSMemories_Taken", entry) end
+  end
+  local function capture()
+    if d.clean and not keepUI then M.CleanShot(shutter) else shutter() end
   end
   if C_Timer and C_Timer.After and (d.delay or 0) > 0 then
     C_Timer.After(d.delay, capture)
@@ -1069,6 +1314,10 @@ local function hiddenValue(v)
   return (ok and yes) and true or false
 end
 function M.OnEvent(event, ...)
+  if event == "PLAYER_REGEN_ENABLED" then
+    M.Clean(false)
+    return nil, "clean screenshot UI restored"
+  end
   local n, args, scrubbed = select("#", ...), { ... }, false
   for i = 1, n do
     if hiddenValue(args[i]) then args[i] = nil; scrubbed = true end
@@ -1183,6 +1432,7 @@ function M.Decide(event, ...)
   elseif event == "SCREENSHOT_SUCCEEDED" or event == "SCREENSHOT_FAILED" then
     local entry = M.Log()[1]
     if entry then entry.shot = (event == "SCREENSHOT_SUCCEEDED") end
+    M.RestoreHDR()
     M.Clean(false)                    -- the picture is written: the interface comes back
     if ns.Share and ns.Share.Shot then ns.Share.Shot(event) end   -- and a share card goes away
     return nil, "noted"
@@ -1223,6 +1473,7 @@ function M.Start()
   for _, e in ipairs(EVENTS) do
     pcall(f.RegisterEvent, f, e)     -- ten expansions apart: an unknown event must not abort
   end
+  pcall(f.RegisterEvent, f, "PLAYER_REGEN_ENABLED")
   f:SetScript("OnEvent", function(_, event, ...) M.OnEvent(event, ...) end)
   M.frame = f
   M.Log()

@@ -543,16 +543,18 @@ end
 function S.Capture(token)
   if token ~= S.token or not S.Up() then return nil end
   local note = S.note
-  note.file = M.Stem()
-  M.Clean(true)
-  if Screenshot then pcall(Screenshot) end
-  if M.Click then pcall(M.Click) end
-  S.shotFor = token
-  M.Keep(note)
-  if ns.Announce then pcall(ns.Announce, "BiSMemories_Taken", note) end
-  if C_Timer and C_Timer.After then
-    C_Timer.After(S.BACK, function() if S.token == token then S.Close("done") end end)
-  end
+  M.CleanShot(function()
+    if token ~= S.token or not S.Up() then return end
+    note.file = M.Stem()
+    M.Screenshot()
+    if M.Click then pcall(M.Click) end
+    S.shotFor = token
+    M.Keep(note)
+    if ns.Announce then pcall(ns.Announce, "BiSMemories_Taken", note) end
+    if C_Timer and C_Timer.After then
+      C_Timer.After(S.BACK, function() if S.token == token then S.Close("done") end end)
+    end
+  end, function() return token == S.token and S.Up() end)
   return note
 end
 
