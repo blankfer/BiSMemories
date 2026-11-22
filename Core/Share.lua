@@ -554,7 +554,7 @@ function S.Capture(token)
     if C_Timer and C_Timer.After then
       C_Timer.After(S.BACK, function() if S.token == token then S.Close("done") end end)
     end
-  end, function() return token == S.token and S.Up() end)
+  end, function() return token == S.token and S.Up() and not L.InFight() end)
   return note
 end
 

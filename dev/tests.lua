@@ -1656,16 +1656,13 @@ end
   H.ok(M.GambaRound({ winner = "Kumlust Surname", loser = "X", amount = 200 }) ~= nil, "a bigger one, under the full name: yes")
   _G.BiSGambaAPI, _G.BiSToolsAPI = nil, nil
 
-  H.section("0.9.0: clean shots - the interface hidden for the instant of the picture")
-  -- THE LIVE CLIENT'S RULE (Arn's BugGrabber, the stress test, 21 Oct: "AddOn 'BiSMemories' tried to call the
-  -- protected function 'UNKNOWN()'" at Memories.lua:362): SetUIVisibility - Alt+Z's own call - is PROTECTED. An
-  -- addon's shot is never a key press, so the client refuses it: nothing hides, no Lua error (pcall says fine),
-  -- an ADDON_ACTION_BLOCKED instead. This mock does exactly that, and the test asks what the picture SHOWS.
-  local blocked = 0
+  H.section("0.9.0: clean shots - never hide UI in combat")
   local keepCombat = _G.InCombatLockdown
   local keepHide, keepShow = UIParent.Hide, UIParent.Show
+  local visibilityCalls = 0
+  UIParent.Hide = function() visibilityCalls = visibilityCalls + 1 end
+  UIParent.Show = function() visibilityCalls = visibilityCalls + 1 end
   _G.InCombatLockdown = function() return false end
-  _G.SetUIVisibility = function() blocked = blocked + 1 end
   local ui = _G.UIParent
   run()                                                -- earlier shots' "back in a moment" timers, run out
   M.Clean(false)
@@ -1677,20 +1674,20 @@ end
   H.ok(shown(), "nothing hidden before the shutter")
   q[1]()
   table.remove(q, 1)
-  H.ok(not shown() and M.uiHidden, "the interface hides before the shutter")
+  H.ok(shown() and ui:GetAlpha() == 0 and M.uiHidden, "the interface fades before the shutter without Hide")
   H.eq(shots, beforeCleanShot, "the hidden interface has time to settle before the screenshot")
   M.OnEvent("SCREENSHOT_FAILED")
-  H.ok(not shown(), "an earlier screenshot event does not reveal the UI during the settling pause")
+  H.eq(ui:GetAlpha(), 0, "an earlier screenshot event does not reveal the UI during the settling pause")
   run()
   H.eq(shots, beforeCleanShot + 1, "the screenshot follows the settling pause")
   M.OnEvent("SCREENSHOT_SUCCEEDED")
-  H.ok(shown() and ui:GetAlpha() == 1 and not M.uiHidden, "the picture written: back, as it was")
+  H.ok(shown() and ui:GetAlpha() == 1 and not M.uiHidden, "the picture written: the interface returns")
   M.Shoot("manual", "the event never comes")
   run()
   run()
   run()
   H.ok(shown() and not M.uiHidden, "and if the client never says, back after a moment anyway")
-  H.eq(blocked, 0, "and never the protected call: nothing for BugGrabber")
+  H.eq(visibilityCalls, 0, "clean shots never call UIParent Hide or Show")
   ui:SetAlpha(0.8)                                     -- someone dimmed their interface: it comes back dimmed
   M.Shoot("manual", "dimmed")
   run()
@@ -1700,35 +1697,46 @@ end
   ui:SetAlpha(1)
 
   _G.InCombatLockdown = function() return true end
+  local combatCallbacks = 0
+  local combatAlpha = ui:GetAlpha()
   M.Clean(true)
-  H.ok(shown() and ui:GetAlpha() == 0, "combat: the UI stays shown and alpha is the fallback")
-  M.Clean(false)
-  H.ok(shown() and ui:GetAlpha() == 1, "combat fallback restores the player's UI")
+  H.ok(shown() and ui:GetAlpha() == combatAlpha and not M.uiHidden, "combat: a clean request leaves the UI unchanged")
+  M.CleanShot(function() combatCallbacks = combatCallbacks + 1 end)
+  H.eq(combatCallbacks, 1, "a screenshot requested in combat proceeds immediately")
+  H.eq(ui:GetAlpha(), combatAlpha, "a combat screenshot does not fade the interface")
 
   _G.InCombatLockdown = function() return false end
-  local hide = ui.Hide
-  ui.Hide = function() end
-  M.Clean(true)
-  H.ok(shown() and ui:GetAlpha() == 0, "a blocked Hide is detected and alpha remains the fallback")
-  M.Clean(false)
-  H.ok(shown() and ui:GetAlpha() == 1, "a blocked Hide does not prevent UI cleanup")
-  ui.Hide = hide
-
-  M.Clean(true)
-  H.ok(not shown(), "outside combat, UIParent hides when Hide succeeds")
+  M.CleanShot(function() combatCallbacks = combatCallbacks + 1 end)
+  H.eq(ui:GetAlpha(), 0, "outside combat, a clean shot may fade the interface while settling")
   _G.InCombatLockdown = function() return true end
-  M.Clean(false)
-  H.ok(not shown() and ui:GetAlpha() == 1, "combat during a capture defers Show but restores alpha")
-  _G.InCombatLockdown = function() return false end
-  fire("PLAYER_REGEN_ENABLED")
-  H.ok(shown(), "PLAYER_REGEN_ENABLED restores UIParent after deferred cleanup")
+  M.OnEvent("PLAYER_REGEN_DISABLED")
+  H.eq(ui:GetAlpha(), 1, "combat starting during settling immediately restores UI opacity")
+  H.eq(combatCallbacks, 2, "a still-valid pending screenshot proceeds when combat starts")
+  H.ok(shown() and not M.uiHidden, "combat entry leaves UIParent visible")
+  run()
+  H.eq(combatCallbacks, 2, "stale settling and cleanup timers cannot repeat the screenshot")
+  H.eq(ui:GetAlpha(), 1, "stale timers cannot re-hide the UI during combat")
 
-  ui:Hide()
-  M.Clean(true)
-  M.Clean(false)
-  H.ok(not shown(), "a UIParent that was already hidden stays hidden")
-  ui:Show()
-  ui:SetAlpha(1)
+  _G.InCombatLockdown = function() return false end
+  M.CleanShot(function() combatCallbacks = combatCallbacks + 1 end)
+  M.CleanShot(function() combatCallbacks = combatCallbacks + 1 end)
+  _G.InCombatLockdown = function() return true end
+  M.OnEvent("PLAYER_REGEN_DISABLED")
+  H.eq(combatCallbacks, 4, "overlapping pending screenshots both continue once combat begins")
+  H.eq(ui:GetAlpha(), 1, "overlapping waiters restore UI only once and leave it visible")
+  run()
+  H.eq(combatCallbacks, 4, "old overlapping timers stay inert")
+
+  _G.InCombatLockdown = nil
+  local unknownCombatCallback = 0
+  M.CleanShot(function() unknownCombatCallback = unknownCombatCallback + 1 end)
+  H.eq(unknownCombatCallback, 1, "missing combat status fails safe and still permits capture")
+  H.eq(ui:GetAlpha(), 1, "missing combat status never changes UI opacity")
+  _G.InCombatLockdown = function() error("combat status unavailable") end
+  M.CleanShot(function() unknownCombatCallback = unknownCombatCallback + 1 end)
+  H.eq(unknownCombatCallback, 2, "a failing combat check also permits capture safely")
+  H.eq(ui:GetAlpha(), 1, "a failing combat check never changes UI opacity")
+  _G.InCombatLockdown = function() return false end
 
   local keepEnumerateFrames = _G.EnumerateFrames
   _G.EnumerateFrames = function(current)
@@ -1738,6 +1746,7 @@ end
     end
   end
   local layerOwner = _G.CreateFrame("Frame", nil, ui)
+  layerOwner.GetRegions = function(self) return unpack(self._regions or {}) end
   local ignoredFrame = _G.CreateFrame("Frame", nil, layerOwner)
   ignoredFrame:SetAlpha(0.65)
   ignoredFrame.IsIgnoringParentAlpha = function() return true end
@@ -1761,6 +1770,7 @@ end
   H.eq(ignoredRegion:GetAlpha(), 0, "an ignored-alpha region hides as soon as the clean shot starts settling")
   H.eq(normalFrame:GetAlpha(), 0.55, "an inheriting frame is unchanged during settling")
   local lateFrame = _G.CreateFrame("Frame", nil, layerOwner)
+  lateFrame.GetRegions = function(self) return unpack(self._regions or {}) end
   lateFrame:SetAlpha(0.45)
   lateFrame.IsIgnoringParentAlpha = function() return true end
   local lateRegion = lateFrame:CreateTexture()
@@ -1802,7 +1812,6 @@ end
   H.ok(shown(), "switched off: the interface stays")
   run()
   d.delay, d.clean = 0, true
-  _G.SetUIVisibility = nil
   ui.Hide, ui.Show = keepHide, keepShow
   _G.InCombatLockdown = keepCombat
 

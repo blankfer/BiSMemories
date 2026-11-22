@@ -53,7 +53,7 @@ local DEFAULTS = {
   candidWindow = 45 * 60,           -- taken at a random moment inside this much play, not on login
   lootQuality = 4,    -- 4 = epic. 3 = rare, if you want more of them
   gems = false,       -- a gem is a component, not a keepsake (4 Oct 2026, Black Temple)
-  clean = true,       -- the interface hidden for the instant of the shot (M.Clean)
+  clean = true,       -- fade the interface for clean screenshots (M.Clean)
   bossEvery = false,  -- true: every kill, as before 0.9.0; false: the first, and a fastest yet
   deathEvery = false, -- true: every death; false: the ones worth keeping (M.DeathWorthy)
   onThisDay = false,  -- at login: "a year ago today..." (M.OnThisDay); 1.0: off to start
@@ -369,50 +369,19 @@ function M.NpcOf(guid)
   return nil
 end
 
---- CLEAN SHOTS: hide UIParent when the client allows it outside combat, with alpha as the fallback.
---- SetUIVisibility (Alt+Z's own call) was blocked on the live client; this is a separate Hide/Show attempt,
---- verified by actual frame visibility. Restore at screenshot completion or after M.CLEAN_BACK seconds.
+--- CLEAN SHOTS: fade UIParent only when combat status explicitly says it is safe.
+--- Never call UIParent:Hide/Show: combat can start between the shutter and restoration.
 M.CLEAN_BACK = 2
 M.CLEAN_SETTLE = 0.3
 local cleanGeneration = 0
 local cleanLayers = {}
-local cleanHiddenUI
+local cleanWaiters = {}
 
 local function cleanOutOfCombat()
   local inCombat = _G.InCombatLockdown
   if type(inCombat) ~= "function" then return false end
   local ok, active = pcall(inCombat)
   return ok and active == false
-end
-
-local function hideCleanUI(ui)
-  if cleanHiddenUI or not cleanOutOfCombat() or type(ui.IsShown) ~= "function" or type(ui.Hide) ~= "function" then return end
-  local ok, shown = pcall(ui.IsShown, ui)
-  if not (ok and shown == true) then return end
-  pcall(ui.Hide, ui)
-  local shownOK, stillShown = pcall(ui.IsShown, ui)
-  if shownOK and stillShown == false then cleanHiddenUI = ui end
-end
-
-local function restoreCleanUI()
-  local ui = cleanHiddenUI
-  if not ui then return false end
-  local shownOK, shown = pcall(ui.IsShown, ui)
-  if shownOK and shown == true then
-    cleanHiddenUI = nil
-    M.cleanShowPending = nil
-    return true
-  end
-  M.cleanShowPending = true
-  if not cleanOutOfCombat() or type(ui.Show) ~= "function" then return false end
-  pcall(ui.Show, ui)
-  shownOK, shown = pcall(ui.IsShown, ui)
-  if shownOK and shown == true then
-    cleanHiddenUI = nil
-    M.cleanShowPending = nil
-    return true
-  end
-  return false
 end
 
 local function cleanLayer(object)
@@ -468,29 +437,9 @@ local function restoreCleanLayers()
   end
 end
 
-function M.Clean(on)
-  local ui = UIParent
-  if not (ui and ui.SetAlpha and ui.GetAlpha) then return false end
-  if on then
-    if not M.uiHidden then
-      hideCleanUI(ui)
-      M.uiAlpha = ui:GetAlpha() or 1
-      ui:SetAlpha(0)
-      M.uiHidden = true
-      pcall(fadeCleanLayers)                 -- hide addon layers that ignore UIParent alpha during the settling pause
-    end
-    cleanGeneration = cleanGeneration + 1
-    local generation = cleanGeneration
-    local timer = _G.C_Timer
-    if type(timer) == "table" and type(timer.After) == "function" then
-      pcall(timer.After, M.CLEAN_BACK, function()
-        if generation == cleanGeneration then M.Clean(false) end
-      end)
-    end
-    return true
-  end
-  if not M.uiHidden then return restoreCleanUI() end
-  if (M.cleanWaiters or 0) > 0 then
+local function restoreClean(force)
+  if not M.uiHidden then return false end
+  if not force and (M.cleanWaiters or 0) > 0 then
     M.cleanRestorePending = true
     return false
   end
@@ -498,15 +447,69 @@ function M.Clean(on)
   M.cleanRestorePending = nil
   restoreCleanLayers()
   M.uiHidden = nil
-  ui:SetAlpha(M.uiAlpha or 1)
+  local ui, alpha = UIParent, M.uiAlpha
   M.uiAlpha = nil
-  restoreCleanUI()
+  if ui and type(ui.SetAlpha) == "function" then pcall(ui.SetAlpha, ui, type(alpha) == "number" and alpha or 1) end
   return true
 end
 
---- Hide the interface, let its fade settle, then take a clean screenshot if the request is still current.
+local function cleanBackTimer()
+  cleanGeneration = cleanGeneration + 1
+  local generation = cleanGeneration
+  local timer = _G.C_Timer
+  if type(timer) == "table" and type(timer.After) == "function" then
+    pcall(timer.After, M.CLEAN_BACK, function()
+      if generation == cleanGeneration then M.Clean(false) end
+    end)
+  end
+end
+
+function M.Clean(on, force)
+  if on then
+    if not cleanOutOfCombat() then
+      restoreClean(true)
+      return false
+    end
+    local ui = UIParent
+    if not (ui and type(ui.SetAlpha) == "function" and type(ui.GetAlpha) == "function") then return false end
+    if not M.uiHidden then
+      local alphaOK, alpha = pcall(ui.GetAlpha, ui)
+      if not (alphaOK and type(alpha) == "number") then return false end
+      local setOK = pcall(ui.SetAlpha, ui, 0)
+      if not setOK then return false end
+      M.uiAlpha = alpha
+      M.uiHidden = true
+      pcall(fadeCleanLayers)                 -- hide addon layers that ignore UIParent alpha during the settling pause
+    end
+    cleanBackTimer()
+    return true
+  end
+  return restoreClean(force == true)
+end
+
+local function interruptCleanShots()
+  local waiters = cleanWaiters
+  cleanWaiters = {}
+  cleanGeneration = cleanGeneration + 1
+  M.cleanWaiters = 0
+  M.cleanRestorePending = nil
+  M.Clean(false, true)
+  for _, waiter in ipairs(waiters) do waiter.interrupt() end
+end
+
+--- Fade only outside combat; when combat starts, restore opacity and release current valid shutters.
 function M.CleanShot(callback, valid)
   if type(callback) ~= "function" then return false end
+  if not cleanOutOfCombat() then
+    M.Clean(false, true)
+    local current = true
+    if valid then
+      local ok, value = pcall(valid)
+      current = ok and value == true
+    end
+    if current then callback() end
+    return false
+  end
   if not M.Clean(true) then
     local current = true
     if valid then
@@ -518,10 +521,13 @@ function M.CleanShot(callback, valid)
   end
 
   M.cleanWaiters = (M.cleanWaiters or 0) + 1
-  local waiting = true
-  local function finish()
-    if not waiting then return end
-    waiting = false
+  local waiter = { waiting = true }
+  local function finish(interrupted)
+    if not waiter.waiting then return end
+    waiter.waiting = false
+    for i = #cleanWaiters, 1, -1 do
+      if cleanWaiters[i] == waiter then table.remove(cleanWaiters, i) break end
+    end
     M.cleanWaiters = math.max((M.cleanWaiters or 1) - 1, 0)
     local current = true
     if valid then
@@ -532,12 +538,16 @@ function M.CleanShot(callback, valid)
       if M.cleanWaiters == 0 then M.Clean(false) end
       return false
     end
-    M.cleanRestorePending = nil
-    M.Clean(true)                          -- restart the fallback from the shutter, not the settling wait
-    pcall(fadeCleanLayers)                 -- catch addon layers created or changed during the settling pause
+    if not interrupted then
+      M.cleanRestorePending = nil
+      local active = M.Clean(true)          -- restart the fallback from the shutter, not the settling wait
+      if active then pcall(fadeCleanLayers) end -- catch addon layers created or changed during the settling pause
+    end
     callback()
     return true
   end
+  waiter.interrupt = function() finish(true) end
+  cleanWaiters[#cleanWaiters + 1] = waiter
 
   local timer = _G.C_Timer
   if type(timer) == "table" and type(timer.After) == "function" then
@@ -1314,7 +1324,10 @@ local function hiddenValue(v)
   return (ok and yes) and true or false
 end
 function M.OnEvent(event, ...)
-  if event == "PLAYER_REGEN_ENABLED" then
+  if event == "PLAYER_REGEN_DISABLED" then
+    interruptCleanShots()
+    return nil, "clean screenshot UI restored for combat"
+  elseif event == "PLAYER_REGEN_ENABLED" then
     M.Clean(false)
     return nil, "clean screenshot UI restored"
   end
@@ -1474,6 +1487,7 @@ function M.Start()
     pcall(f.RegisterEvent, f, e)     -- ten expansions apart: an unknown event must not abort
   end
   pcall(f.RegisterEvent, f, "PLAYER_REGEN_ENABLED")
+  pcall(f.RegisterEvent, f, "PLAYER_REGEN_DISABLED")
   f:SetScript("OnEvent", function(_, event, ...) M.OnEvent(event, ...) end)
   M.frame = f
   M.Log()
