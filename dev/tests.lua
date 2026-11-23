@@ -4154,4 +4154,74 @@ end)()
   M.me, M.whole, M.nobody, M.faceless = nil, nil, nil, nil
 end)()
 
+-- MEMORIES ON THE PHONE (Core/DeckApp.lua, 22 Nov 2026 - Arn: "start memories")
+;(function()
+  H.section("22 Nov: Memories on the phone")
+  local A, M, J = NS.DeckApp, NS.M, NS.J
+  H.ok(A and A.handle == nil, "no phone at login: the app stays out of the way")
+  local defs, opened, dirty = {}, nil, 0
+  local keepT, keepDB, keepTime, keepGroup = _G.BiSTheme.Deck, _G.BiSMemoriesDB.log, _G.time, _G.IsInGroup
+  _G.BiSTheme.Deck = { Register = function(d) d.id = d.owner .. ":" .. d.key defs[d.id] = d return { Dirty = function() dirty = dirty + 1 end } end,
+    Open = function(id) opened = id return true end, ClassPic = function(c) return c and "sheet", c and { 0, 0.25, 0, 0.25 } end }
+  H.ok(A.Register() == true and A.Register() == false, "with the phone: it registers, once")
+  local def = defs["BiSMemories:memories"]
+  local p, c = def.page, def.card
+  local T = 2000000000
+  _G.time = function() return T end
+  _G.BiSMemoriesDB.log = {
+    { at = T - 30, reason = "share", detail = "a card" },
+    { at = T - 60, reason = "boss", detail = "first kill: Princess Theradras", zone = "Maraudon", level = 49, npc = 12201, secs = 83,
+      with = { "Mossy Paw", "Brokk Stonejaw" }, gear = { [16] = 2001 }, cargo = { "|cff0070dd|Hitem:17707::::|h[Gemshard Heart]|h|r" } },
+    { at = T - 86400, reason = "levelup", detail = "level 48", level = 48, zone = "Tanaris", class = "SHAMAN" } }
+  local book = M.Char()
+  local keepBosses = book.bosses
+  book.bosses = { ["Princess Theradras"] = { kills = 2, best = 83, first = T - 60 }, Noxxion = { kills = 1, best = 32, first = T - 200 } }
+  -- LATEST
+  local r = p.rows(1)
+  H.ok(#r == 2 and r[1].text == "Princess Theradras" and r[1].tint == "gold" and r[1].right == "Boss" and r[1].sub:find("Maraudon", 1, true), "LATEST: the newest first, share cards left out, in its colour", r[1] and r[1].text)
+  H.ok(r[2].text == "Level 48" and r[2].pic == "sheet" and r[2].coords and r[2].tint == "good", "a level up: your class's circle")
+  local h = p.hero(1)
+  H.ok(h and h.creature == 12201 and h.big == "Princess Theradras", "the latest's creature in 3D on top")
+  H.ok(p.big(1).word == "TAKE ONE NOW" and #p.boxes(1) == 4, "TAKE ONE NOW, and the year's numbers")
+  -- a memory's page
+  r[1].act.fn()
+  local m = p.rows(1)
+  local function find(words) for _, x in ipairs(p.rows(1)) do if x.text == words then return x end end end
+  H.ok(p.title() == "Princess Theradras" and m[1].text == "Back" and find("Mossy Paw") and find("Gemshard Heart"), "a memory opens: where, with whom, what dropped")
+  H.ok(p.boxes(1)[1][1] == "TOOK" and p.boxes(1)[1][2] == "1:23", "how long the fight took", p.boxes(1)[1][2])
+  H.ok(p.big(1).word == "SHARE CARD" and p.keys(1)[1].word == "POP OUT", "SHARE CARD, and POP OUT for the journal")
+  m[1].act.fn()
+  H.ok(p.title() == "Memories", "Back: the list")
+  -- BESTS
+  local b = p.rows(2)
+  H.ok(#b == 2 and b[1].text == "Noxxion" and b[1].right == "0:32" and b[1].tint == "gold" and b[2].sub:find("2 kills", 1, true), "BESTS: the fastest first", b[1] and b[1].text)
+  H.ok(p.boxes(2)[1][2] == 2 and p.boxes(2)[2][2] == "0:32", "its boxes")
+  -- YEAR, SETTINGS
+  H.ok(pcall(p.rows, 3) and pcall(p.boxes, 3), "YEAR: no error")
+  local s4 = p.rows(4)
+  local lv
+  for _, x in ipairs(s4) do if x.text == "Level ups" then lv = x end end
+  H.ok(lv and lv.right == "ON", "SETTINGS: the options window's switches")
+  lv.act.fn()
+  H.ok(_G.BiSMemoriesDB.levelup == false, "a switch flips the setting itself")
+  _G.BiSMemoriesDB.levelup = true
+  -- THE CARD
+  H.ok(c.prio() == 4 and c.lines()[1] == "NEW MEMORY" and c.lines()[3] == "Princess Theradras" and c.buttons()[1].word == "LOOK", "a fresh memory: NEW MEMORY")
+  T = T + 600
+  H.ok(c.prio() == nil and c.prio(true) == 1, "ten minutes later: no card (pulled out: the latest)")
+  c.buttons()[1].fn()
+  H.ok(opened == "BiSMemories:memories" and p.title() == "Princess Theradras", "LOOK opens it on the phone")
+  -- a memory taken: the phone is told
+  dirty = 0
+  J.Touch()
+  H.ok(dirty > 0, "a memory taken: the phone repaints")
+  -- nothing in any tab errors with an empty album
+  _G.BiSMemoriesDB.log = {}
+  A.Open(nil)
+  for tab = 1, 4 do for _, f in ipairs({ "rows", "boxes", "text", "hero", "big", "keys" }) do H.ok(pcall(p[f], tab), "empty, tab " .. tab .. " " .. f) end end
+  H.ok(p.text(1):find("No memories yet", 1, true), "empty: it says what makes one")
+  book.bosses = keepBosses
+  _G.BiSTheme.Deck, _G.BiSMemoriesDB.log, _G.time, _G.IsInGroup = keepT, keepDB, keepTime, keepGroup
+end)()
+
 H.report()

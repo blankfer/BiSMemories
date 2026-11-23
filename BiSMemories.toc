@@ -31,5 +31,6 @@ Core\Journal.lua
 Core\Lounge.lua
 Core\Share.lua
 Core\Pins.lua
+Core\DeckApp.lua
 UI\Options.lua
 Core\Slash.lua
