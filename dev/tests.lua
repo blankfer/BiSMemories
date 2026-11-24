@@ -1633,6 +1633,18 @@ end
   local n = 0
   for _, p in pairs(PINS.world) do n = n + 1 H.ok(p.flag == _G.HBD_PINS_WORLDMAP_SHOW_PARENT, "on the zone map and one up") end
   H.eq(n, 2, "and the library has them")
+  -- A PIN THE MAP REFUSES never stands on the screen (Arn, 23 Nov: "the memory thing is showing up when the map is
+  -- closed" - a new frame is shown, on UIParent's middle; the refused one stayed there)
+  do
+    local bad = { reason = "boss", detail = "a spot the library refuses", at = 5, map = 1436, x = "0.5", y = 0.5, char = "Kumlust-Dreamscythe" }
+    table.insert(log, bad)
+    NS.Pins.Update()
+    local standing = 0
+    for _, b in ipairs(NS.Pins.pool) do if b:IsShown() then standing = standing + 1 end end
+    H.ok(NS.Pins.pins[bad] == nil and standing == 0, "a pin the map refuses goes back hidden - nothing left on the screen", standing)
+    for i = #log, 1, -1 do if log[i] == bad then table.remove(log, i) end end
+    NS.Pins.Update()
+  end
   -- UNDER THE QUEST PINS (Arn, 6 Nov, a map with a memory square on a quest's "!": "sometime the memeories blocks
   -- quest stuff on the map"). The library puts every pin on AREA_POI, beside the quest pins; ours get their own
   -- layer just above the map's art. The client's pin manager, as it behaves: a level type it does not know is an

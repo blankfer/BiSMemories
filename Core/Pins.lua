@@ -56,6 +56,10 @@ local function NewPin()
   local b = table.remove(P.pool)
   if b then return b end
   b = CreateFrame("Button", nil, UIParent)
+  -- HIDDEN UNTIL THE MAP TAKES IT (Arn, 23 Nov 2026: "the memory thing is showing up when the map is closed" - a corner
+  -- bracket in the middle of his screen, its tooltip a memory): a new frame is SHOWN, on UIParent, at its centre. The map
+  -- shows a pin it places; one it refuses stayed there, on the screen, for good.
+  b:Hide()
   b:SetSize(P.SIZE, P.SIZE)
   b.arms, b.shade = {}, {}
   for _, c in ipairs(P.CORNERS) do
@@ -121,6 +125,7 @@ function P.Update()
         n = n + 1
       else
         b.entry = nil
+        b:Hide()                                            -- (refused: never left standing on the screen)
         P.pool[#P.pool + 1] = b
       end
     end
