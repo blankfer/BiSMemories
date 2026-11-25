@@ -91,7 +91,40 @@ local function NewPin()
     if GameTooltip then GameTooltip:Hide() end
   end)
   b:SetScript("OnClick", function(self) if ns.J and self.entry then ns.J.Select(self.entry) ns.J.Show() end end)
+  -- ONLY ON THE MAP (Arn, 25 Nov 2026, the 23 Nov fix in and the stray back: a bracket in the middle of his screen,
+  -- the map closed, its tooltip a level-up memory). Whatever shows a pin, it stays up only while the library's map pin
+  -- holds it (parent.icon == it - set before the library's own Show); anything else hides it again at once and is
+  -- written down (P.Stray) so the path that showed it can be found.
+  b:SetScript("OnShow", function(self)
+    if not P.OnMap(self) then
+      self:Hide()
+      P.Stray(self)
+    end
+  end)
   return b
+end
+
+--- Does the map hold this pin? The library's holder is a map pin whose `icon` is it.
+function P.OnMap(b)
+  local up = b:GetParent()
+  return up ~= nil and up ~= UIParent and up.icon == b
+end
+
+--- A pin something tried to show off the map: kept (the last few, with who called) and said once a session.
+P.strays = {}
+P.STRAY_KEEP = 5
+function P.Stray(b)
+  local up = b:GetParent()
+  local stack = type(debugstack) == "function" and debugstack(2, 8, 0) or ""
+  table.insert(P.strays, 1, { at = time and time() or 0, parent = up == UIParent and "UIParent" or (up and "other" or "none"),
+    what = b.entry and b.entry.reason, stack = stack })
+  while #P.strays > P.STRAY_KEEP do table.remove(P.strays) end
+  local d = ns.DB and ns.DB()
+  if type(d) == "table" then d.pinStrays = P.strays end
+  if not P.told then
+    P.told = true
+    ns.Print("a map pin tried to show off the map - stopped. /bism pins why shows where it came from.")
+  end
 end
 
 function P.Clear()

@@ -1645,6 +1645,28 @@ end
     for i = #log, 1, -1 do if log[i] == bad then table.remove(log, i) end end
     NS.Pins.Update()
   end
+  -- ONLY ON THE MAP (Arn, 25 Nov: the stray back with the 23 Nov fix in). Whatever shows a pin: held by a map pin
+  -- (parent.icon == it, as the library's OnAcquired sets it before its Show) it shows; let go onto UIParent, a Show
+  -- from anywhere is undone at once and written down for /bism pins why.
+  do
+    local b = next(NS.Pins.pins) and NS.Pins.pins[next(NS.Pins.pins)]
+    local holder = CreateFrame("Frame", nil, UIParent)
+    holder.icon = b
+    b:Hide()
+    b:SetParent(holder)
+    b:Show()
+    H.ok(b:IsShown(), "a pin the map holds shows")
+    holder.icon = nil                                    -- the library's OnReleased: hidden, back on UIParent
+    b:Hide()
+    b:SetParent(UIParent)
+    local before = #NS.Pins.strays
+    b:Show()                                             -- something shows it anyway
+    H.ok(not b:IsShown(), "a pin off the map is hidden again at once")
+    H.eq(#NS.Pins.strays, before + 1, "and written down")
+    H.eq(NS.Pins.strays[1].parent, "UIParent", "where it was")
+    H.ok(d.pinStrays == NS.Pins.strays, "kept in the save for /bism pins why")
+    NS.Pins.Update()
+  end
   -- UNDER THE QUEST PINS (Arn, 6 Nov, a map with a memory square on a quest's "!": "sometime the memeories blocks
   -- quest stuff on the map"). The library puts every pin on AREA_POI, beside the quest pins; ours get their own
   -- layer just above the map's art. The client's pin manager, as it behaves: a level type it does not know is an
