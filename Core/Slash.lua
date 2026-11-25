@@ -329,7 +329,15 @@ function ns.Slash(input)
 
   elseif cmd == "pins" then
     local m = rest:lower()
-    if m ~= "mine" and m ~= "all" and m ~= "off" then
+    if m == "why" then
+      -- the pins something tried to show off the map (Pins.lua P.Stray), newest first, with who called
+      local list = (ns.Pins and #ns.Pins.strays > 0) and ns.Pins.strays or db().pinStrays or {}
+      if #list == 0 then ns.Print("no map pin has tried to show off the map") end
+      for i, s in ipairs(list) do
+        ns.Print("%d. %s on %s (%s)", i, date and date("%d %b %H:%M", s.at) or s.at, s.parent or "?", s.what or "?")
+        for line in tostring(s.stack or ""):gmatch("[^\n]+") do print("   " .. line) end
+      end
+    elseif m ~= "mine" and m ~= "all" and m ~= "off" then
       ns.Print("map pins are %s - /bism pins mine, all or off", ns.Pins and ns.Pins.Mode() or "?")
     else
       db().pins = m
