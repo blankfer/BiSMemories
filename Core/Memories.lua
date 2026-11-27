@@ -53,7 +53,8 @@ local DEFAULTS = {
   candidWindow = 45 * 60,           -- taken at a random moment inside this much play, not on login
   lootQuality = 4,    -- 4 = epic. 3 = rare, if you want more of them
   gems = false,       -- a gem is a component, not a keepsake (4 Oct 2026, Black Temple)
-  clean = true,       -- the interface hidden for the instant of the shot (M.Clean)
+  clean = true,       -- the interface hidden for the instant of the shot (M.Clean), stray windows too (M.StraysOut)
+  hdrShot = true,     -- HDR off for the instant of the shot when it is on (M.HdrOff) - nothing for anyone without HDR
   bossEvery = false,  -- true: every kill, as before 0.9.0; false: the first, and a fastest yet
   deathEvery = false, -- true: every death; false: the ones worth keeping (M.DeathWorthy)
   onThisDay = false,  -- at login: "a year ago today..." (M.OnThisDay); 1.0: off to start
@@ -541,6 +542,7 @@ function M.Clean(on)
     M.uiAlpha = ui:GetAlpha() or 1
     ui:SetAlpha(0)
     M.uiHidden = true
+    M.StraysOut()
     if C_Timer and C_Timer.After then C_Timer.After(M.CLEAN_BACK, function() M.Clean(false) end) end
     return true
   end
@@ -548,7 +550,164 @@ function M.Clean(on)
   M.uiHidden = nil
   ui:SetAlpha(M.uiAlpha or 1)
   M.uiAlpha = nil
+  M.StraysBack()
   return true
+end
+
+--- THE STRAY WINDOWS (27 Nov 2026; spotted by emilien-puget in his PR #63, rebuilt here - Arn: "we look what they
+--- suggest it but we build it ourselves"). A window that IGNORES its parent's alpha stays on screen when the clean shot
+--- fades UIParent, and lands in the "clean" picture. Searching every window at every shot would cost a spike, and
+--- "find them once" misses windows made later (Arn: "What if we install a new addon how would we find those new
+--- windows"). So: ONE sweep at login for the windows that set it before we loaded, and a TRIPWIRE on the client's own
+--- SetIgnoreParentAlpha - each widget type's shared method table, hooked once - that writes down any window that turns
+--- it on afterwards, a new addon's or a window made on the spot. At the shot only that short list is faded, and each
+--- comes back to its own alpha (if nobody changed it meanwhile). UNVERIFIED on Forever: `/bism probe stray` checks
+--- the tripwire really fires there. A forbidden frame (an instance's nameplate) is never touched.
+M.strays = setmetatable({}, { __mode = "k" })     -- weak: a window that goes away leaves the list by itself
+M.STRAY_TYPES = { "Frame", "Button", "CheckButton", "StatusBar", "Slider", "EditBox", "ScrollFrame", "Cooldown",
+                  "MessageFrame", "PlayerModel", "DressUpModel", "ModelScene" }
+
+local function touchable(o)
+  if type(o) ~= "table" then return false end
+  local ok, forbidden = pcall(function() return o.IsForbidden and o:IsForbidden() end)
+  return ok and not forbidden
+end
+
+--- The tripwire's catch: a window that turned "ignore my parent's alpha" on goes on the list.
+function M.StrayHook(o, on)
+  if on and touchable(o) then M.strays[o] = true end
+end
+
+--- Hook SetIgnoreParentAlpha on every widget type's shared method table, once. Answers how many tables were hooked
+--- (0 = the client gives no shared tables: the login sweep alone then).
+function M.Tripwire()
+  if M.wired then return M.wired end
+  M.wired = 0
+  if not (CreateFrame and hooksecurefunc and getmetatable) then return 0 end
+  local host = CreateFrame("Frame")
+  if host.Hide then host:Hide() end
+  local samples = { host }
+  for _, kind in ipairs(M.STRAY_TYPES) do
+    local ok, o = pcall(CreateFrame, kind, nil, host)
+    if ok and o then samples[#samples + 1] = o end
+  end
+  local okT, t = pcall(host.CreateTexture, host)
+  if okT and t then samples[#samples + 1] = t end
+  local okF, f = pcall(host.CreateFontString, host)
+  if okF and f then samples[#samples + 1] = f end
+  local seen = {}
+  for _, o in ipairs(samples) do
+    local mt = getmetatable(o)
+    local index = type(mt) == "table" and mt.__index
+    if type(index) == "table" and not seen[index] and type(index.SetIgnoreParentAlpha) == "function" then
+      seen[index] = true
+      if pcall(hooksecurefunc, index, "SetIgnoreParentAlpha", M.StrayHook) then M.wired = M.wired + 1 end
+    end
+  end
+  return M.wired
+end
+
+--- One walk over every window (and its pictures and words), at login: the strays that were set before we loaded.
+function M.StraySweep()
+  local walk = EnumerateFrames
+  if type(walk) ~= "function" then return 0 end
+  local n, f = 0, nil
+  local function check(o)
+    local ok, yes = pcall(function() return o.IsIgnoringParentAlpha and o:IsIgnoringParentAlpha() end)
+    if ok and plain(yes) == true and touchable(o) then
+      if not M.strays[o] then n = n + 1 end
+      M.strays[o] = true
+    end
+  end
+  while true do
+    local ok, nxt = pcall(walk, f)
+    if not ok or not nxt then break end
+    f = nxt
+    check(f)
+    local okR, regions = pcall(function() return { f:GetRegions() } end)
+    if okR then for _, r in ipairs(regions) do check(r) end end
+  end
+  M.swept = n
+  return n
+end
+
+--- At the shot: every listed stray that is up and still ignores its parent goes out, its own alpha kept.
+function M.StraysOut()
+  M.strayAlpha = {}
+  for o in pairs(M.strays) do
+    pcall(function()
+      if not (o:IsShown() and o:IsIgnoringParentAlpha()) then return end
+      local a = plain(o:GetAlpha())
+      if type(a) == "number" and a > 0 then M.strayAlpha[o] = a o:SetAlpha(0) end
+    end)
+  end
+end
+--- After it: each back to its own alpha - unless something else has changed it meanwhile.
+function M.StraysBack()
+  local kept = M.strayAlpha or {}
+  M.strayAlpha = nil
+  for o, a in pairs(kept) do
+    pcall(function() if plain(o:GetAlpha()) == 0 then o:SetAlpha(a) end end)
+  end
+end
+
+--- HDR-SAFE SHOTS (27 Nov 2026; emilien-puget's report, issue #62 / PR #63, rebuilt here): with the game's HDR output
+--- on, a screenshot comes out washed out. For the instant of the shot HDR goes off - only for a player who has it on,
+--- and only while `hdrShot` is on (the default: it does nothing for anyone else) - and back on the moment the picture
+--- is written (SCREENSHOT_SUCCEEDED / _FAILED) or M.HDR_BACK s later. A short M.HDR_SETTLE wait lets the switch take
+--- before the shutter. `db.hdrBack` is written while it is off, so a /reload in that second still turns it back on at
+--- the next load. UNVERIFIED: whether the switch flashes the screen, and whether the client takes it in a fight.
+M.HDR_CVAR, M.HDR_SETTLE, M.HDR_BACK = "HDROutput", 0.15, 1
+M.SWEEP_AT = 5                                   -- seconds after entering the world: the stray windows' one sweep
+
+local function cvarGet(name)
+  local get = (C_CVar and C_CVar.GetCVar) or GetCVar
+  if type(get) ~= "function" then return nil end
+  local ok, v = pcall(get, name)
+  return ok and plain(v) or nil
+end
+local function cvarSet(name, v)
+  local set = (C_CVar and C_CVar.SetCVar) or SetCVar
+  if type(set) ~= "function" then return false end
+  local ok, done = pcall(set, name, v)
+  return ok and done ~= false
+end
+
+--- Is the game's HDR output on?
+function M.HdrOn()
+  local v = cvarGet(M.HDR_CVAR)
+  return v == "1" or v == 1 or v == true
+end
+
+--- Before the shutter: HDR off, if it is on and the setting allows. Answers true when it switched it.
+function M.HdrOff()
+  if db().hdrShot == false or M.hdrOff then return false end
+  if not M.HdrOn() then return false end
+  db().hdrBack = true                                   -- written first: a reload now still brings it back
+  if not cvarSet(M.HDR_CVAR, "0") then db().hdrBack = nil return false end
+  M.hdrOff = true
+  return true
+end
+
+--- After it: HDR back on (only if we turned it off - this load or, `db.hdrBack`, the one before a reload).
+function M.HdrBack()
+  if not (M.hdrOff or db().hdrBack) then return false end
+  M.hdrOff = nil
+  db().hdrBack = nil
+  return cvarSet(M.HDR_CVAR, "1")
+end
+
+--- THE SHUTTER, for every picture (M.Shoot and the share card): HDR off if it must be, a short wait for that to take,
+--- then `fire` (the Screenshot and what goes with it); HDR back on after.
+function M.Shutter(fire)
+  local switched = M.HdrOff()
+  local function go()
+    fire()
+    if switched and C_Timer and C_Timer.After then C_Timer.After(M.HDR_BACK, function() M.HdrBack() end) end
+    if switched and not (C_Timer and C_Timer.After) then M.HdrBack() end
+  end
+  if switched and C_Timer and C_Timer.After then C_Timer.After(M.HDR_SETTLE, go) else go() end
+  return switched
 end
 
 --- Take one, and write down why. Returns the entry, or nil and the reason it did not.
@@ -611,10 +770,12 @@ function M.Shoot(reason, detail, from, extra)
   local function capture()
     entry.file = shotStem()
     if d.clean and not keepUI then M.Clean(true) end
-    if Screenshot then pcall(Screenshot) end
-    click()
-    -- other addons hear it here, at the shutter, so the file name is on the note they get (API.lua)
-    if ns.Announce then pcall(ns.Announce, "BiSMemories_Taken", entry) end
+    M.Shutter(function()
+      if Screenshot then pcall(Screenshot) end
+      click()
+      -- other addons hear it here, at the shutter, so the file name is on the note they get (API.lua)
+      if ns.Announce then pcall(ns.Announce, "BiSMemories_Taken", entry) end
+    end)
   end
   if C_Timer and C_Timer.After and (d.delay or 0) > 0 then
     C_Timer.After(d.delay, capture)
@@ -1330,6 +1491,11 @@ function M.Decide(event, ...)
 
   elseif event == "PLAYER_ENTERING_WORLD" then
     if not M.claimTried then M.claimTried = true M.ClaimOld() end   -- the old notes that are this character's
+    -- the stray windows: one sweep, a few seconds in (every addon loaded, its windows made); the tripwire does the rest
+    if not M.sweepArmed then
+      M.sweepArmed = true
+      if C_Timer and C_Timer.After then C_Timer.After(M.SWEEP_AT, function() pcall(M.StraySweep) end) else pcall(M.StraySweep) end
+    end
     M.SeeZone(realZone())             -- wherever you logged in or zoned to, known from now on
     M.ArmCandid()                     -- a week up? book a moment somewhere in this session
     M.HookGamba()                     -- BiS Gamba's rounds, when it is installed
@@ -1340,6 +1506,7 @@ function M.Decide(event, ...)
     local entry = M.Log()[1]
     if entry then entry.shot = (event == "SCREENSHOT_SUCCEEDED") end
     M.Clean(false)                    -- the picture is written: the interface comes back
+    if M.hdrOff then M.HdrBack() end  -- and HDR, if the shot turned it off
     if ns.Share and ns.Share.Shot then ns.Share.Shot(event) end   -- and a share card goes away
     return nil, "noted"
   end
@@ -1382,5 +1549,7 @@ function M.Start()
   f:SetScript("OnEvent", function(_, event, ...) M.OnEvent(event, ...) end)
   M.frame = f
   M.Log()
+  pcall(M.Tripwire)                  -- the stray windows' tripwire, once, at load
+  if db().hdrBack then M.HdrBack() end   -- a reload in the second a shot had HDR off: back on
   return f
 end

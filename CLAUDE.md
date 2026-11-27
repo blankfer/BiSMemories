@@ -10,7 +10,11 @@ Read ../_bisdev/CLAUDE.md first.
   and `/bism` (alias `/memories`, the old name, since 12 Oct 2026) - the real commands live in `Core/Slash.lua`.
 - `Core/Memories.lua`: the camera - triggers (`M.TRIGGERS`, plain words `M.Word`), `M.Shoot` (each note
   carries the character, class/race, map spot `M.Spot`, gear ids `M.Gear`, and extras: npc, killer, secs),
-  clean shots (`M.Clean`, SetUIVisibility), per-character books `M.Char()` = `d.chars["Name-Realm"]`
+  clean shots (`M.Clean`: UIParent FADED - SetUIVisibility is protected; plus the STRAY windows that ignore their parent's
+  alpha - `M.strays`, found by one login sweep `M.StraySweep` and a tripwire `M.Tripwire` on each widget type's shared
+  SetIgnoreParentAlpha, faded by `M.StraysOut` / back by `M.StraysBack`; `/bism probe stray`), HDR-safe shots (27 Nov,
+  emilien-puget's report rebuilt: `M.Shutter` = `M.HdrOff` HDROutput 0 + `M.HDR_SETTLE` wait + the shot, `M.HdrBack` on
+  SCREENSHOT_* or `M.HDR_BACK`; `db.hdrBack` survives a reload; `hdrShot`, `/bism hdr`), per-character books `M.Char()` = `d.chars["Name-Realm"]`
   {zones, bosses, firsts, gambaBest, owner} (the pre-0.9.0 shared `d.zones` goes once to the main, `M.Inherit`).
   NO REALM on Forever since 21 Nov 2026 (1.60.1 LU2: GetRealmName ""): `M.KeyFor` keeps the character's ONE existing
   "Name-<realm>" key (a book or a note; a book's `owner` = whole name from `M.Whole`, never taken by another whole

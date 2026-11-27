@@ -545,8 +545,10 @@ function S.Capture(token)
   local note = S.note
   note.file = M.Stem()
   M.Clean(true)
-  if Screenshot then pcall(Screenshot) end
-  if M.Click then pcall(M.Click) end
+  M.Shutter(function()                          -- HDR off for the instant, if it is on (Memories.lua M.HdrOff)
+    if Screenshot then pcall(Screenshot) end
+    if M.Click then pcall(M.Click) end
+  end)
   S.shotFor = token
   M.Keep(note)
   if ns.Announce then pcall(ns.Announce, "BiSMemories_Taken", note) end

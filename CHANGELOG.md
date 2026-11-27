@@ -1,5 +1,10 @@
 # BiSMemories
 
+## Unreleased
+
+- **Pictures are no longer washed out with HDR on.** If you play with the game's HDR output on, BiS> Memories turns it off for the instant of each picture and back on as soon as the picture is saved. It does nothing if you don't use HDR, and `/bism hdr` (or "HDR-safe pictures" in the options) switches it off. ([emilien-puget](https://github.com/emilien-puget))
+- **Clean pictures are clean of every addon.** Some addons' windows ignore the interface fade, so they stayed in the "clean" pictures. BiS> Memories now finds those windows once when you log in, notices any window that starts doing it later (a new addon, or a window opened on the spot), and fades them too for the instant of the picture. ([emilien-puget](https://github.com/emilien-puget))
+
 ## 1.1.3
 
 - **Your characters know themselves again after Forever's realm change.** Since today's game update (1.60.1, 21 November) the game no longer tells addons which realm you are on, so BiS> Memories filed every character under a new, empty name: your own older memories looked like someone else's, places you had been were "new" again, boss best times were forgotten, and a first death or first mount could be photographed a second time. Each character now keeps the name it already had, and whatever was noted under the empty one since the update is folded back in at your next login, with nothing to click: places and firsts from both (the earliest first kept), boss kills added up, the fastest time and the biggest gamba win kept. Nothing is thrown away: the stray copy is kept aside in the saved file.
