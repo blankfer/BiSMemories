@@ -68,6 +68,7 @@ function CFG.Sections()
     } },
     { title = "the camera", column = 2, options = {
       toggle("clean", "hide the interface", "The interface hidden for the instant of the picture, like Alt+Z, then back."),
+      toggle("hdrShot", "HDR-safe pictures", "With the game's HDR on, pictures come out washed out: HDR goes off for the instant of the picture, then back on. Does nothing without HDR. (Thanks to emilien-puget.)"),
       toggle("sound", "camera click", "A click when a picture is taken (the game only clicks for the Print Screen key)."),
       { key = "lootQuality", kind = "step", label = "loot from", min = 2, max = 5, step = 1,
         help = "The least quality of your own loot that is worth a picture.",
@@ -229,10 +230,10 @@ function CFG.Pages()
   local pins = by.pins
   local journal = function() if ns.J then ns.J.Tab("memories") ns.J.Show() end end
   local pages = {
-    { key = "camera", title = "the camera", options = rows("clean", "sound", "gap", "now"),
+    { key = "camera", title = "the camera", options = rows("clean", "hdrShot", "sound", "gap", "now"),
       desc = "How every picture is taken: the interface out of the way for the instant of it, a click so you know, "
         .. "and a pause between two so one loot burst is not forty.",
-      usage = "/bism now [note]   /bism clean   /bism sound   /bism gap <seconds>" },
+      usage = "/bism now [note]   /bism clean   /bism hdr   /bism sound   /bism gap <seconds>" },
     { key = "milestones", title = "milestones", options = rows("levelup", "achievement", "first", "exalted"),
       desc = "The big steps of a character: every level, every achievement, your first mount and learning to ride, "
         .. "going exalted.",

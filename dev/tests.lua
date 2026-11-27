@@ -4258,4 +4258,120 @@ end)()
   _G.BiSTheme.Deck, _G.BiSMemoriesDB.log, _G.time, _G.IsInGroup = keepT, keepDB, keepTime, keepGroup
 end)()
 
+-- 27 NOV: HDR-SAFE PICTURES AND THE STRAY WINDOWS (emilien-puget's report, issue #62 / PR #63 - read as a suggestion and
+-- rebuilt here; Arn: "we look what they suggest it but we build it ourselves but credit them on change logs")
+;(function()
+  H.section("27 Nov: HDR-safe pictures and the stray windows")
+  local M, d = NS.M, NS.DB()
+  local keepGap, keepDelay, keepShot, keepSet = d.gap, d.delay, _G.Screenshot, _G.SetCVar
+  d.gap, d.delay, d.clean = 0, 0, true
+  H.timers = {}
+  local keepTimer = _G.C_Timer                 -- (an earlier section leaves a timer that never runs)
+  _G.C_Timer = { After = function(delay, fn) H.timers[#H.timers + 1] = { delay = delay, fn = fn } end }
+  M.hdrOff, d.hdrBack = nil, nil
+  local keepGT, clock = _G.GetTime, 1e15         -- (a clock well past any earlier section's last shot)
+  _G.GetTime = function() clock = clock + 100 return clock end
+  local shotHDR, sets = "none", 0
+  _G.Screenshot = function() shotHDR = H.cvars.HDROutput end
+  _G.SetCVar = function(k, v) sets = sets + 1 return keepSet(k, v) end
+  -- HDR on: off for the instant, the shutter a moment later, back on when the picture is written
+  H.cvars.HDROutput = "1"
+  local got1, why1 = M.Shoot("now", "an HDR picture")
+  H.ok(got1, "the first HDR picture is taken", tostring(why1))
+  H.ok(H.cvars.HDROutput == "0" and d.hdrBack == true, "HDR on: off before the shutter (and the save knows, for a reload)")
+  H.eq(shotHDR, "none", "the shutter waits a moment for the switch to take")
+  H.RunTimers()
+  H.eq(shotHDR, "0", "the picture is taken with HDR off")
+  fire("SCREENSHOT_SUCCEEDED")
+  H.ok(H.cvars.HDROutput == "1" and d.hdrBack == nil and not M.hdrOff, "the picture written: HDR back on")
+  local before = sets
+  H.RunTimers()
+  H.ok(H.cvars.HDROutput == "1" and sets == before, "the fallback finds it on already: nothing switched twice")
+  -- no word from the client: the fallback brings it back
+  M.Shoot("now", "no event")
+  H.RunTimers()
+  H.eq(H.cvars.HDROutput, "0", "taken")
+  H.RunTimers()
+  H.eq(H.cvars.HDROutput, "1", "no SCREENSHOT event: back on after M.HDR_BACK")
+  -- HDR off: nothing touched, no wait
+  H.cvars.HDROutput = "0"
+  sets, shotHDR = 0, "none"
+  M.Shoot("now", "no HDR")
+  H.ok(shotHDR == "0" and sets == 0 and not d.hdrBack, "HDR off: nothing switched, the picture at once")
+  -- the switch off
+  H.cvars.HDROutput, d.hdrShot, shotHDR = "1", false, "none"
+  M.Shoot("now", "left alone")
+  H.ok(shotHDR == "1" and not d.hdrBack, "HDR-safe pictures off: HDR left as it is")
+  d.hdrShot = nil
+  -- a reload in the second HDR was off: back on at the next load
+  H.cvars.HDROutput, d.hdrBack, M.hdrOff = "0", true, nil
+  H.ok(M.HdrBack() and H.cvars.HDROutput == "1" and d.hdrBack == nil, "after a reload: hdrBack turns it back on")
+  local src = bytes(ROOT .. "/Core/Memories.lua") or ""
+  H.ok(src:find("if db().hdrBack then M.HdrBack() end", 1, true), "and M.Start does that at load")
+  -- /bism hdr
+  said = {}
+  NS.Slash("hdr")
+  H.ok(d.hdrShot == false and said[#said]:find("HDR-safe pictures: off", 1, true), "/bism hdr: off", said[#said])
+  NS.Slash("hdr")
+  H.ok(d.hdrShot == true, "/bism hdr again: on")
+  -- the share card's shutter goes through the same switch
+  local share = bytes(ROOT .. "/Core/Share.lua") or ""
+  H.ok(share:find("M.Shutter(function()", 1, true), "the share card's picture: the same HDR switch")
+
+  -- THE STRAY WINDOWS: one sweep finds the windows that ignore their parent's alpha
+  local stray = CreateFrame("Frame", nil, UIParent)
+  stray:SetIgnoreParentAlpha(true)
+  local plainF = CreateFrame("Frame", nil, UIParent)
+  local pic = plainF:CreateTexture(nil, "ARTWORK")
+  pic:SetIgnoreParentAlpha(true)
+  M.StraySweep()
+  H.ok(M.strays[stray] and M.strays[pic] and not M.strays[plainF], "the login sweep: the stray window and the stray picture, nothing else")
+  -- the tripwire: a widget type's shared method table, hooked - a window that turns it on later is caught
+  local idx = {}
+  function idx:SetIgnoreParentAlpha(on) self._ipa = on end
+  function idx:IsIgnoringParentAlpha() return self._ipa == true end
+  function idx:IsForbidden() return false end
+  function idx:Hide() end
+  local keepCF, keepWired = _G.CreateFrame, M.wired
+  _G.CreateFrame = function() return setmetatable({}, { __index = idx }) end
+  M.wired = nil
+  H.eq(M.Tripwire(), 1, "the tripwire: one shared method table hooked (the same table for every sample is hooked once)")
+  _G.CreateFrame = keepCF
+  local later = setmetatable({}, { __index = idx })
+  later:SetIgnoreParentAlpha(true)
+  H.ok(M.strays[later] and later:IsIgnoringParentAlpha(), "a window that turns it on later is on the list (and the call still works)")
+  M.strays[later], M.wired = nil, keepWired
+  -- a forbidden frame is never touched
+  local forb = setmetatable({}, { __index = idx })
+  forb.IsForbidden = function() return true end
+  M.StrayHook(forb, true)
+  H.ok(not M.strays[forb], "a forbidden frame (an instance's nameplate) never goes on the list")
+  -- at the shot: the strays out with the interface, back to their own alpha after
+  local ui = _G.UIParent
+  M.Clean(false) ui:SetAlpha(1)
+  stray:SetAlpha(0.8)
+  M.Clean(true)
+  H.ok(ui:GetAlpha() == 0 and stray:GetAlpha() == 0 and pic:GetAlpha() == 0, "the clean shot: the interface AND the strays out of the picture")
+  M.Clean(false)
+  H.ok(stray:GetAlpha() == 0.8 and pic:GetAlpha() == 1, "after it: each back to its own alpha")
+  M.Clean(true)
+  stray:SetAlpha(0.5)
+  M.Clean(false)
+  H.eq(stray:GetAlpha(), 0.5, "one changed meanwhile by its own addon is left as that addon set it")
+  stray:Hide()
+  M.Clean(true)
+  H.eq(stray:GetAlpha(), 0.5, "a hidden stray is not touched")
+  M.Clean(false)
+  stray:SetIgnoreParentAlpha(false)
+  stray:Show()
+  M.Clean(true)
+  H.eq(stray:GetAlpha(), 0.5, "one that follows its parent again is left to the parent's fade")
+  M.Clean(false)
+  -- the probe answers on this client
+  said = {}
+  NS.Slash("probe stray")
+  H.ok(said[#said] and said[#said]:find("stray windows:", 1, true), "/bism probe stray: the tripwire's answer", said[#said])
+  d.gap, d.delay, _G.Screenshot, _G.SetCVar, _G.GetTime, _G.C_Timer = keepGap, keepDelay, keepShot, keepSet, keepGT, keepTimer
+end)()
+
 H.report()

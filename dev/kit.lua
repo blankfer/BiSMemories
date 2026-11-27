@@ -62,6 +62,8 @@ local function newTexture(owner, layer)
         self._alpha = a
     end
     function t:GetAlpha() return self._alpha end
+    function t:SetIgnoreParentAlpha(on) self._ipa = on and true or false end
+    function t:IsIgnoringParentAlpha() return self._ipa == true end
     function t:GetDrawLayer() return self._layer end
     -- size and anchor REMEMBERED: a label pinned beside an icon starts where the icon ends
     function t:SetAllPoints() self._all = true end
@@ -172,6 +174,7 @@ local function newFrame(ftype, name, parent)
     -- frame nobody sized (or sized only by anchors it has not laid out yet); this mock used to answer 200 x 24,
     -- so "the rows fit the panel" could pass on a panel that has no height at all.
     H.frames[#H.frames + 1] = fr
+    fr._enum = #H.frames
 
     function fr:GetName() return self._name end
     function fr:GetParent() return self._parent end
@@ -193,6 +196,11 @@ local function newFrame(ftype, name, parent)
     -- frame with silence and GetAlpha with nothing, so "is the interface out of the picture" was untestable).
     function fr:SetAlpha(a) self._alpha = a end
     function fr:GetAlpha() if self._alpha == nil then return 1 end return self._alpha end
+    -- IGNORE MY PARENT'S ALPHA (27 Nov 2026, the stray windows): such a frame stays on screen when its parent fades -
+    -- kept, so "is it out of the clean picture" can be tested
+    function fr:SetIgnoreParentAlpha(on) self._ipa = on and true or false end
+    function fr:IsIgnoringParentAlpha() return self._ipa == true end
+    function fr:GetRegions() return unpack(self._regions or {}) end
     -- Enough anchor maths to catch a window that WALKS. These used to be flat
     -- constants, so `Relayout` could drop the frame by its own height on every
     -- call and no test could ever see it. A frame anchored to UIParent's
@@ -578,7 +586,25 @@ _G.GetInstanceInfo = function() return "Netherstorm", "none", 0, "", 0, 0, false
 _G.GetZoneText = function() return "Netherstorm" end
 _G.GetSubZoneText = function() return "" end
 _G.ConfirmSummon = function() H.confirmed = true end
-_G.hooksecurefunc = function(name, fn) H.hooked = H.hooked or {}; H.hooked[name] = fn end
+-- hooksecurefunc in both of the client's forms: (name, fn) is recorded as before; (table, name, fn) really hooks -
+-- the original runs, then fn, with the same arguments (27 Nov 2026, the stray-window tripwire)
+_G.hooksecurefunc = function(a, b, c)
+    if type(a) == "table" then
+        local orig = a[b]
+        if type(orig) ~= "function" then error("hooksecurefunc: " .. tostring(b) .. " is not a function", 0) end
+        a[b] = function(...) local r = { orig(...) } c(...) return unpack(r) end
+        return
+    end
+    H.hooked = H.hooked or {}; H.hooked[a] = b
+end
+-- every frame made, in the order made (the client's walk); nil after the last
+_G.EnumerateFrames = function(prev)
+    return H.frames[(prev and prev._enum or 0) + 1]
+end
+-- the game's settings (CVars): kept as the strings the client hands back
+H.cvars = {}
+_G.GetCVar = function(name) return H.cvars[name] end
+_G.SetCVar = function(name, value) H.cvars[name] = tostring(value) return true end
 _G.GetAddOnMetadata = function(_, key) return key == "Version" and "test" or nil end
 
 --------------------------------------------------------------------

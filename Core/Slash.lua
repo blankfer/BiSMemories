@@ -27,6 +27,8 @@
       /bism every boss|death    every kill / every death again, not just the ones worth keeping
       /bism pins mine|all|off   the world map's pins
       /bism onthisday · clean   on this day on/off; hide the interface for the picture on/off
+      /bism hdr                 HDR-safe pictures on/off (HDR off for the instant of the picture)
+      /bism probe stray         does the stray-window tripwire fire on this client? (and how many it knows)
       /bism db                  which saved copy came back at this login
 
   Every command longer than 4 letters has a short word too (ns.SHORT, 6 Nov 2026): sound = snd,
@@ -173,7 +175,7 @@ end
 -- word a command answers to -> its long name.
 ns.SHORT = { sound = "snd", clear = "clr", zones = "zone", status = "stat", heard = "hear", journal = "book",
              options = "opt", group = "grp", onthisday = "otd", every = "each", clean = "cln", lounge = "lng",
-             share = "shr" }
+             share = "shr", probe = "prb" }
 ns.SLASH_WORD = { places = "zones", album = "journal", config = "options", settings = "options", cheese = "group",
                   where = "path", clipper = "lounge" }
 for long, short in pairs(ns.SHORT) do ns.SLASH_WORD[short] = long end
@@ -345,6 +347,26 @@ function ns.Slash(input)
       ns.Print("map pins: %s (%d on the map)", m, n)
     end
 
+  elseif cmd == "hdr" then
+    local d = db()
+    d.hdrShot = (d.hdrShot == false)
+    ns.Print("HDR-safe pictures: %s (your HDR is %s now)", d.hdrShot and T.text("good", "on") or T.text("warn", "off"),
+      ns.M.HdrOn() and "on" or "off")
+
+  elseif cmd == "probe" and (rest or ""):lower():match("^stray") then
+    local M = ns.M
+    local n = M.wired or M.Tripwire()
+    local w = CreateFrame("Frame", nil, UIParent)
+    local fired = false
+    if w.SetIgnoreParentAlpha then pcall(w.SetIgnoreParentAlpha, w, true) fired = M.strays[w] == true end
+    if w.SetIgnoreParentAlpha then pcall(w.SetIgnoreParentAlpha, w, false) end
+    M.strays[w] = nil
+    local known = 0
+    for _ in pairs(M.strays) do known = known + 1 end
+    ns.Print("stray windows: tripwire on %d widget types, %s; the login sweep found %s; %d on the list now",
+      n, fired and T.text("good", "it FIRES") or T.text("warn", "it did NOT fire (the login sweep alone)"),
+      tostring(M.swept or "nothing yet"), known)
+
   elseif cmd == "clean" then
     local d = db()
     d.clean = not d.clean
@@ -380,7 +402,7 @@ function ns.Slash(input)
     -- the short word beside each long one, in brackets: "sound (snd)"
     ns.Print("%s", T.text("muted",
       "/bism · all · now [note] · journal (book) · lounge (lng) · share (shr) [n] · map · year [all] · group (grp) · options (opt) · on|off <thing>"
-      .. " · every (each) boss|death · pins mine|all|off · onthisday (otd) · clean (cln) · loot <2-5> · gap <secs>"
+      .. " · every (each) boss|death · pins mine|all|off · onthisday (otd) · clean (cln) · hdr · probe (prb) stray · loot <2-5> · gap <secs>"
       .. " · sound (snd) · clear (clr) · zones (zone) · status (stat) · heard (hear) · path · db"))
   end
 end
