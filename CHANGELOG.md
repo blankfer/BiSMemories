@@ -1,9 +1,11 @@
 # BiSMemories
 
-## Unreleased
+## 1.2.0
 
 - **Pictures are no longer washed out with HDR on.** If you play with the game's HDR output on, BiS> Memories turns it off for the instant of each picture and back on as soon as the picture is saved. It does nothing if you don't use HDR, and `/bism hdr` (or "HDR-safe pictures" in the options) switches it off. ([emilien-puget](https://github.com/emilien-puget))
 - **Clean pictures are clean of every addon.** Some addons' windows ignore the interface fade, so they stayed in the "clean" pictures. BiS> Memories now finds those windows once when you log in, notices any window that starts doing it later (a new addon, or a window opened on the spot), and fades them too for the instant of the picture. ([emilien-puget](https://github.com/emilien-puget))
+- **Memories on the BiS deck.** With BiS Tools' deck, BiS> Memories has its own app there: your latest memories, your bests, the year so far and the settings.
+- **Fixed: a memory pin stuck in the middle of the screen** with the map closed. Pins now only show on the map.
 
 ## 1.1.3
 
