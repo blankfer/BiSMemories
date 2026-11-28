@@ -543,6 +543,7 @@ function M.Clean(on)
     ui:SetAlpha(0)
     M.uiHidden = true
     M.StraysOut()
+    M.MapOut()
     if C_Timer and C_Timer.After then C_Timer.After(M.CLEAN_BACK, function() M.Clean(false) end) end
     return true
   end
@@ -551,6 +552,34 @@ function M.Clean(on)
   ui:SetAlpha(M.uiAlpha or 1)
   M.uiAlpha = nil
   M.StraysBack()
+  M.MapBack()
+  return true
+end
+
+--- THE MINIMAP'S ARROW (27 Nov 2026, Arn's clean picture: "top right there are minimap artifacts"). The client draws the
+--- minimap's own pieces - your arrow above all - itself, past any alpha, so the faded interface left the arrow in the
+--- corner. The minimap is HIDDEN for the instant instead, and shown again with the interface. Never in a fight while
+--- it is protected (an addon's secure button on it makes it so): there the arrow stays rather than an error.
+function M.MapOut()
+  local map = Minimap
+  if M.mapHid or not (map and map.Hide and map.IsShown) then return false end
+  local okS, shown = pcall(map.IsShown, map)
+  if not (okS and shown == true) then return false end
+  if map.IsProtected and InCombatLockdown then
+    local okP, prot = pcall(map.IsProtected, map)
+    local okF, fight = pcall(InCombatLockdown)
+    if (not okP or prot ~= false and prot ~= nil) and (not okF or fight ~= false) then return false end
+  end
+  if not pcall(map.Hide, map) then return false end
+  M.mapHid = true
+  return true
+end
+
+function M.MapBack()
+  if not M.mapHid then return false end
+  M.mapHid = nil
+  local map = Minimap
+  if map and map.Show then pcall(map.Show, map) end
   return true
 end
 
