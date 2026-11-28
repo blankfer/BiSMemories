@@ -4367,6 +4367,29 @@ end)()
   M.Clean(true)
   H.eq(stray:GetAlpha(), 0.5, "one that follows its parent again is left to the parent's fade")
   M.Clean(false)
+  -- the minimap's arrow is drawn past any alpha: the minimap is hidden for the instant, shown after
+  local map = _G.Minimap
+  map:Show()
+  M.Clean(true)
+  H.ok(not map:IsShown(), "the clean shot: the minimap hidden (its arrow ignores the fade)")
+  M.Clean(false)
+  H.ok(map:IsShown() and not M.mapHid, "after it: the minimap back")
+  map:Hide()
+  M.Clean(true) M.Clean(false)
+  H.ok(not map:IsShown(), "a minimap the player had hidden stays hidden")
+  map:Show()
+  local keepICL, keepProt = _G.InCombatLockdown, map.IsProtected
+  _G.InCombatLockdown = function() return true end
+  map.IsProtected = function() return true end
+  M.Clean(true)
+  H.ok(map:IsShown() and not M.mapHid, "in a fight with a protected minimap: left alone (the arrow, never an error)")
+  M.Clean(false)
+  map.IsProtected = function() return false end
+  M.Clean(true)
+  H.ok(not map:IsShown(), "in a fight with a plain minimap: hidden as usual")
+  M.Clean(false)
+  _G.InCombatLockdown, map.IsProtected = keepICL, keepProt
+  H.ok(map:IsShown(), "and back")
   -- the probe answers on this client
   said = {}
   NS.Slash("probe stray")
